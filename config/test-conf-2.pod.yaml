@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf-2
+  name: test-conf-2
+spec:
+  containers:
+  - image: busybox
+    name: test-conf-2
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+    env:
+    - name: USER
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: user
+    - name: PASSWORD
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: password
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
