@@ -1,0 +1,13 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi
+spec:
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: resouer/ubuntu-bc 
+        command: ["sh", "-c", "echo 'scale=1000; 4*a(1)' | bc -l "]
+      restartPolicy: Never
+  backoffLimit: 4
