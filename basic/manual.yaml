@@ -1,0 +1,76 @@
+查看node
+kubectl get node -o wide
+
+查看pod
+kubect get pod -o wide
+
+查看所有的pod
+kubectl get pod -A -o wide
+
+查看ns
+kubectl get ns
+
+查看kube-system下的pod
+kubectl get pod -n kube-system
+
+kubectl get pod -n kube-system | grep calico
+
+创建命名空间
+kubectl create ns lab
+
+查看命名空间
+kubectl get ns -o wide
+
+查看命名空间详细信息
+kubectl describe ns kube-system
+
+查看命名空间的定义文件
+kubectl get ns lab -o yaml
+
+创建pod
+kubectl run katacoda --image=katacoda/docker-http-server -n lab
+
+查看新建的pod
+kubectl get pod -n lab -o wide
+  *特别留意pod的ip地址，以及所在节点
+
+使用pod的ip访问pod
+curl 10.244.29.132
+
+查看pod详细信息
+kubectl describe pod katacoda -n lab
+
+查看pod的日志
+kubectl logs katacoda -n lab
+
+查看pod的yaml文件
+kubectl get -o yaml katacoda -n lab
+
+查看修改界面
+KUBE_EDITOR="nano" kubectl edit pod katacoda -n lab
+
+
+为特定资源对象添加标签：  
+kubectl label ns lab name=lab
+
+查看标签： 
+kubectl get ns --show-labels
+
+修改标签： 
+kubectl label ns lab name=cka --overwrite
+
+删除标签： 
+kubectl label ns lab name-
+
+删除pod
+kubectl delete pod katacoda -n lab
+
+删除ns
+kubectl delete ns lab
+
+
+
+
+
+
+
