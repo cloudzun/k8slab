@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webserver
+  strategy: {}
+  template:
+    metadata:
+      name: webserver
+      namespace: default
+      labels:
+        app: webserver
+    spec:
+      dnsPolicy: Default
+      hostNetwork: false
+      restartPolicy: Always
+      hostAliases:
+      - ip: "192.168.0.181"
+        hostnames:
+        - "cka01"
+        - "cka-master"
+      - ip: "192.168.0.41"
+        hostnames:
+        - "cka02"
+      - ip: "192.168.0.241"
+        hostnames:
+        - "cka03"
+      volumes:
+      - name: web-root
+        hostPath:
+          path: /data
+      - name: web-path
+        emptyDir: 
+      initContainers:
+      - name: pullcode
+        image: busybox
+        volumeMounts:
+        - name: web-path
+          mountPath: /data
+        command:
+        - /bin/sh
+        - -c
+        - "echo hello > /data/index.html; touch /data/healthy"
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "0.1"
+            memory: "32Mi"
+          limits:
+            cpu: "0.2"
+            memory: "64Mi"
+        startupProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "cat /usr/share/nginx/html/healthy"
+          initialDelaySeconds: 5 
+          periodSeconds: 1
+          timeoutSeconds: 1
+          failureThreshold: 18
+          successThreshold: 1 
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1 
+        readinessProbe:
+          httpGet:
+            port: 80
+            path: /
+          periodSeconds: 1
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1 
+        volumeMounts:
+        - name: web-root
+          mountPath: /data
+        - name: web-path
+          mountPath: /usr/share/nginx/html
+        env:
+        - name: mysqlhost
+          value: "10.96.0.110"
+        - name: mysqlport
+          value: "3306"
+        - name: mysqldb
+          value: "wordpress"
+        ports:
+        - name: web-port
+          containerPort: 80
+          protocol: TCP
