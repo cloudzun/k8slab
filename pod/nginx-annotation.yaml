@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-annotation
+  namespace: default
+  labels:
+    app: nginx-annotation # 标签
+  annotations:
+    app: nginx-annotation # 注解
+spec:
+  dnsPolicy: Default
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    command:
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
