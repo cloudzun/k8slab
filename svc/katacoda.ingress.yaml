@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: katacoda-ingress
+spec:
+  rules:
+  - host: hello.example.com # 主机名
+    http:
+      paths:
+      - path: / # 路径
+        pathType: Prefix
+        backend: # 后端服务
+          service:
+            name: katacoda 
+            port:
+              number: 80
