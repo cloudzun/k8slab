@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lrpod2
+  namespace: default
+spec:
+  containers:
+  - image: katacoda/docker-http-server
+    name: lrpod2
+    resources:
+      limits:
+        cpu: 800m
+        memory: 2Gi
+      requests:
+        cpu: 100m
+        memory: 500Mi
