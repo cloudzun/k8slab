@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      nodeSelector: # 根据标签匹配调度
+        proxy: enable
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
