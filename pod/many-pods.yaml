@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: many-pods
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  - name: redis # 多容器
+    image: redis
+  - name: memcached # 多容器
+    image: memcached
