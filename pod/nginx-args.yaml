@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-args
+  namespace: default
+  labels:
+    app: nginx-args
+spec:
+  dnsPolicy: Default
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    command: #启动参数
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
