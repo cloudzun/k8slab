@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        nfs: # 使用NFS
+          server: 192.168.0.123
+          path: "/data/mysql"
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
