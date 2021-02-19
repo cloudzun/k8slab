@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-volume-emptydir
+  namespace: default
+  labels:
+    app: nginx-volume-emptydir
+  annotations:
+    app: nginx-volume-emptydir
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path # 不用定义本地路径
+    emptyDir: 
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path # 挂接emptyDir
+      mountPath: /www
+    command:
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
