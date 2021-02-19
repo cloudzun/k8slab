@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-dns
+spec:
+  dnsPolicy: Default # 和宿主机的DNS配置相同
+  containers:
+  - name: nginx
+    image: nginx
