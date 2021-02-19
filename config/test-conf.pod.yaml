@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf
+  name: test-conf
+spec:
+  volumes:
+  - name: config
+    configMap:
+      name: test-conf 
+  containers:
+  - image: busybox
+    name: test-conf
+    volumeMounts:
+    - name: config
+      mountPath: /tmp/volume
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
