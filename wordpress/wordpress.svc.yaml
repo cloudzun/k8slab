@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+ name: wordpress-nodeport
+ namespace: blog
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 30180 # 使用nodeport 30180
+  selector:
+    app: wordpress
+  type: NodePort
