@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-csi # 指定使用存储类
+  resources:
+    requests:
+      storage: 5Gi
