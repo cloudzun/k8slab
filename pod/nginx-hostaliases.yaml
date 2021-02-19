@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-hostaliases
+  namespace: default
+  labels:
+    app: nginx-hostaliases
+  annotations:
+    app: nginx-hostaliases
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  hostAliases:
+  - ip: "192.168.0.181"
+    hostnames:
+    - "cka01"
+    - "cka-master"
+  - ip: "192.168.0.41"
+    hostnames:
+    - "cka02"
+  - ip: "192.168.0.241"
+    hostnames:
+    - "cka03"
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path
+    emptyDir: 
+  initContainers:
+  - name: pullcode
+    image: busybox
+    volumeMounts:
+    - name: web-path
+      mountPath: /data
+    command:
+    - /bin/sh
+    - -c
+    - "echo hello > /data/index.html"
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path
+      mountPath: /usr/share/nginx/html
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
