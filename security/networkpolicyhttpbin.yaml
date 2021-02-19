@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-from-namespace
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 54.158.248.248/32
+    - ipBlock:
+        cidr: 184.72.216.47/32
+    - ipBlock:
+        cidr: 54.164.234.192/32
+    - ipBlock:
+        cidr: 3.211.1.78/32
+    - namespaceSelector: # 为了能够解析域名，必须定义CoreDNS
+        matchLabels:
+          name: kube-system 
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
