@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-initcontainer
+  namespace: default
+  labels:
+    app: nginx-initcontainer
+  annotations:
+    app: nginx-initcontainer
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path # 定义emptyDir
+    emptyDir: 
+  initContainers:  # 定义initContainers
+  - name: pullcode
+    image: busybox # initContainer使用的映像
+    volumeMounts:
+    - name: web-path # initContainers挂接emptyDir
+      mountPath: /data
+    command:
+    - /bin/sh
+    - -c
+    - "echo hello > /data/index.html"
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path # 主容器挂接emptyDir
+      mountPath: /usr/share/nginx/html
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
