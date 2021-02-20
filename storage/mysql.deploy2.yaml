@@ -18,7 +18,7 @@ spec:
       volumes: # 定义卷
       - name: mysqldata
         nfs: # 使用NFS
-          server: 192.168.0.123
+          server: nfs
           path: "/data/mysql"
       containers:
       - name: mysql
