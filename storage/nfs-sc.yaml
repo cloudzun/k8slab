@@ -5,7 +5,7 @@ metadata:
   name: nfs-csi
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: 192.168.0.123 # 指定nfs服务器地址
+  server: nfs # 指定nfs服务器地址
   share: /data
 reclaimPolicy: Retain  # only retain is supported
 volumeBindingMode: Immediate
