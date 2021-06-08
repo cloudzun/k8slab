@@ -1,22 +1,23 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   labels:
     app: webserver
   name: webserver
 spec:
-  replicas: 1 # 定义副本数量
-  selector: # 通过lable定义所管理的pod
+  serviceName: webserver
+  replicas: 3
+  selector:
     matchLabels:
       app: webserver
-  strategy: {} # 定义滚动升级的策略
-  template: # 此处以下替换成pod yaml文件，注意缩进
+  template:
     metadata:
-      creationTimestamp: null
+      name: webserver
+      namespace: default
       labels:
-        app: webserver # 使用相同的lable和deployment保持对仗工整
+        app: webserver
     spec:
       containers:
-      - image: nginx:1.7.9
-        name: nginx
+      - name: nginx
+        image: nginx:1.7.9
         resources: {}
