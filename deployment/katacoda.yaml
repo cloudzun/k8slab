@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: katacoda
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: katacoda
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
