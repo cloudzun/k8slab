@@ -9,4 +9,4 @@ spec:
   storageClassName: my-azurefile  # 使用自定义的存储类
   resources:
     requests:
-      storage: 5G
+      storage: 10G
