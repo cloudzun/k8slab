@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: aspnetapp
+  name: aspnetapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aspnetapp
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: aspnetapp
+    spec:
+      containers:
+      - image: mcr.microsoft.com/dotnet/core/samples:aspnetapp
+        name: aspnetapp
+        resources: 
+          requests: # 下限
+            cpu: "0.1"
+            memory: "32Mi"
+          limits: # 上限
+            cpu: "0.2"
+            memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: aspnetapp
+  name: aspnetapp
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: aspnetapp
+  type: LoadBalancer
