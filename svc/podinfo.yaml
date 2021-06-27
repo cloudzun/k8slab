@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: podinfo
+  name: podinfo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: podinfo
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: podinfo
+    spec:
+      containers:
+      - image: stefanprodan/podinfo
+        name: podinfo
+        resources: 
+          requests: # 下限
+            cpu: "0.1"
+            memory: "32Mi"
+          limits: # 上限
+            cpu: "0.2"
+            memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: podinfo
+  name: podinfo
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 9898
+  selector:
+    app: podinfo
+  type: NodePort
