@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simple-frontend-ingress
+  annotations:
+    kubernetes.io/ingress.class: azure/application-gateway
+    cert-manager.io/issuer: letsencrypt-prod
+    cert-manager.io/acme-challenge-type: http01
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: katacoda # 替换服务名
+            port:
+              number: 80
+    host: chengzhagic.eastus.cloudapp.azure.com #替换AG域名
+  tls:
+    - hosts:
+      - chengzhagic.eastus.cloudapp.azure.com #替换AG域名
+      secretName: frontend-prod-tls
