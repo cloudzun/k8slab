@@ -14,7 +14,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: katacoda # 替换服务名
+            name: aspnetapp # 替换服务名
             port:
               number: 80
     host: chengzhagic.eastus.cloudapp.azure.com #替换AG域名
