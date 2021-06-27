@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName:  # 留空表示使用默认存储类
+  resources:
+    requests:
+      storage: 5G
