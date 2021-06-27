@@ -1,0 +1,12 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: my-azurefile  # 使用自定义的存储类
+  resources:
+    requests:
+      storage: 5G
