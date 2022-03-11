@@ -2,6 +2,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: katacoda-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
   rules:
   - host: hello.example.com # 主机名
