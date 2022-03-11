@@ -1,0 +1,268 @@
+
+
+Lab 0 准备环境 （以ubuntu 18.04为例）
+
+安装docker
+sudo curl -sSL https://get.docker.com/ | sh
+
+安装 azure cli
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+安装kubectl
+az aks install-cli
+
+安装helm
+VER=v3.3.4
+wget https://mirror.azure.cn/kubernetes/helm/helm-$VER-linux-amd64.tar.gz
+tar -xvf helm-$VER-linux-amd64.tar.gz
+sudo mv linux-amd64/helm /usr/local/bin
+
+登录到azure
+az login
+
+#切换到国内上下文
+#az cloud set -n AzureChinaCloud
+
+使用命令创建群集
+az group create --name DemoAKS0427 --location eastus
+az acr create --resource-group DemoAKS0427 --name chengzhacr0427 --sku Basic
+az aks create -g DemoAKS0427 -n MyAKS --location eastus  --attach-acr chengzhacr0427 --generate-ssh-keys --enable-addons http_application_routing
+
+通过portal创建群集
+参考https://docs.microsoft.com/zh-cn/azure/aks/kubernetes-walkthrough-portal，建议启用http application routing和ACR集成，并选择低一个版本
+
+
+连接到AKS群集（查看页面上的相关指引）
+
+下载实验用文件
+git clone https://github.com/cloudzun/akslab/
+cd akslab
+
+
+Lab 1 
+
+创建服务
+kubectl create -f azure-vote-all-in-one-redis.yaml
+
+
+查看服务
+kubectl get service azure-vote-front
+  *观察服务类型以及外部地址，并记录
+
+查看pod
+kubectl get pod -o wide
+  *待pod都就绪之后，访问服务的前端地址
+
+手动缩放服务
+kubectl scale --replicas=5 deployment/azure-vote-front
+
+查看部署情况
+kubectl get deployment
+
+设置自动缩放规则
+kubectl autoscale deployment azure-vote-front --cpu-percent=50 --min=3 --max=10
+
+查看缩放状态 
+kubectl get hpa
+
+等几分钟，查看deployment变化情况
+kubectl describe deployment azure-vote-front
+
+查看pod
+kubectl get pod -o wide
+
+删除服务
+kubectl delete -f azure-vote-all-in-one-redis.yml
+
+
+Lab 2 Ingress
+
+创建ingress命名空间
+kubectl create namespace ingress-basic
+
+添加helm repo
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+
+使用helm安装ingress
+helm install nginx-ingress ingress-nginx/ingress-nginx \
+    --namespace ingress-basic \
+    --set controller.replicaCount=2 \
+    --set controller.nodeSelector."beta\.kubernetes\.io/os"=linux \
+    --set defaultBackend.nodeSelector."beta\.kubernetes\.io/os"=linux \
+    --set controller.admissionWebhooks.patch.nodeSelector."beta\.kubernetes\.io/os"=linux
+
+查看azure平台分配的公网ip地址
+kubectl --namespace ingress-basic get services -o wide -w nginx-ingress-ingress-nginx-controller
+  *记录这个公网地址
+
+启用两个演示程序
+kubectl apply -f aks-helloworld-one.yaml --namespace ingress-basic
+kubectl apply -f aks-helloworld-two.yaml --namespace ingress-basic
+
+为演示程序创建ingress入口资源
+kubectl apply -f hello-world-ingress.yaml
+
+查看ingress资源
+kubectl get ingress -n ingress-basic
+
+验证ingress效果
+http://EXTERNAL_IP
+http://EXTERNAL_IP/hello-world-two
+
+
+Lab 3 HTTP路由
+
+查看HTTP路由给定的DNS域名
+az aks show --resource-group myResourceGroup --name myAKSCluster --query addonProfiles.httpApplicationRouting.config.HTTPApplicationRoutingZoneName -o table
+  *亦可使用portal进行查看
+域名示例：98a9fdfb863f4c1ea200.centralus.aksapp.io
+
+修改yaml文件
+nano samples-http-application-routing.yaml
+
+spec:
+  rules:
+  - host: aks-helloworld.<CLUSTER_SPECIFIC_DNS_ZONE> # 修改前
+    http:
+      paths:
+
+spec:
+  rules:
+  - host: aks-helloworld.98a9fdfb863f4c1ea200.centralus.aksapp.io # 修改后
+    http:
+      paths:
+
+运行测试应用
+kubectl apply -f samples-http-application-routing.yaml
+
+查看pod
+kubectl get pod -o wide
+
+查看服务
+kubectl get svc -o wide
+
+查看ingress
+kubectl get ingress
+  *特别关注hosts和address字段
+
+等待两分钟之后进行访问测试
+aks-helloworld.98a9fdfb863f4c1ea200.centralus.aksapp.io
+
+亦可使用samples-http-application-routing2.yaml按上述步骤进行变造，并创建出第二个实例服务进行测试
+
+
+Lab 4 动态存储
+
+查看存储类
+kubectl get sc
+
+创建pvc
+kubectl apply -f azure-premium.yaml
+
+查看pvc
+kubectl get pvc -o wide
+
+创建测试用pod
+kubectl apply -f azure-pvc-disk.yaml
+
+查看pvc
+kubectl get pvc -o wide
+
+查看pv
+kubectl get pv -o wide
+
+查看测试pod的详细配置
+kubectl describe pod mypod
+  *特别关注Volumes
+
+  Volumes:
+  volume:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  azure-managed-disk
+    ReadOnly:   false
+
+创建基于azure file的自定义存储类
+kubectl apply -f azure-file-sc.yaml
+
+确认sc已经创建
+kubectl get sc
+
+创建卷声明
+kubectl apply -f azure-file-pvc.yaml
+
+查看pvc
+kubectl get pvc -o wide
+
+创建测试用pod
+kubectl apply -f azure-pvc-files.yaml
+
+查看pvc
+kubectl get pvc -o wide
+
+查看pv
+kubectl get pv -o wide
+
+查看测试pod的详细配置
+kubectl describe pod mypod2
+  *特别关注Volumes
+  Volumes:
+  volume:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  my-azurefile
+    ReadOnly:   false
+
+Lab 5 使用helm进行开发 
+
+下载示例文件
+git clone https://github.com/Azure/dev-spaces
+cd dev-spaces/samples/nodejs/getting-started/webfrontend
+
+创建Dockefile文件
+
+nano Dockerfile
+
+FROM node:latest
+
+WORKDIR /webfrontend
+
+COPY package.json ./
+
+RUN npm install
+
+COPY . .
+
+EXPOSE 80
+CMD ["node","server.js"]
+
+将映像推送到ACR（需要替换acr的名称）
+
+az acr build --image webfrontend:v1 \
+  --resource-group DemoAKS0513 \
+  --registry chengzhacr0513 \
+  --file Dockerfile .
+
+生成图表
+helm create webfrontend
+
+更新 webfrontend/values.yaml：
+  替换前面步骤中记下的注册表的 loginServer，如 myhelmacr.azurecr.io。
+  将 image.repository 更改为 <loginServer>/webfrontend
+  将 service.type 更改为 LoadBalancer
+
+在 webfrontend/Chart.yaml 中将 appVersion 更新为 v1
+
+运行图表
+helm install webfrontend webfrontend/
+
+查看pod
+kubectl get pod -o wide
+
+查看服务
+kubectl get svc webfrontend -o wide
+  *记录EXTERNAL-IP
+
+访问服务
+http://EXTERNAL_IP
+
+卸载服务
+helm uninstall webfrontend

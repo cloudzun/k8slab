@@ -1,0 +1,474 @@
+
+Lab 1 hostpath实现方式
+
+创建名称空间
+kubectl create ns blog
+
+分析原版mysql deployment配置文件
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+使用hostPath更新 mysql.deploy.yaml
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        hostPath:
+          path: /mysql
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+运行mysql deployment
+kubectl apply -f mysql.deploy.yaml
+
+查看pod，关注mysql pod所在节点的信息
+kubectl get pod -n blog -o wide
+
+切换到上述节点的上下文，检查volumen映射效果
+ll /mysql/
+
+ 
+Lab 2 使用NFS进行数据持久化 （Ubuntu 系统安装NFS步骤请见附录）
+
+在master节点上安装NFS工具
+yum install -y nfs-utils
+
+创建共享目录
+mkdir /data
+
+设置共享权限
+chown nobody.nobody -R /data
+
+echo "/data *(rw,no_root_squash)" >> /etc/exports
+
+重启服务（如果节点重启之后，共享丢失，请重做此步）
+systemctl restart nfs-server
+
+设置开机自启
+systemctl enable nfs-server
+
+showmount -e 192.168.0.123 （需要替换NFS服务器ip地址）
+  *如果共享成功可以看到data目录
+
+创建之后所需的mysql目录
+mkdir /data/mysql
+
+在其他机器上执行安装NFS工具和检查挂接
+yum install -y nfs-utils
+
+showmount -e 192.168.0.123
+
+在其他节点上进行测试
+mount -t nfs 192.168.0.123:data /mnt
+
+查看挂接点，通常在最后一行
+df -hT
+
+摘除
+umount /mnt
+
+# 有关Ubuntu的NFS操作步骤请参见附录
+
+使用NFS更新 mysql.deploy.yaml （需要替换NFS服务器ip地址）
+nano mysql.deploy2.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        nfs: # 使用NFS
+          server: 192.168.0.123
+          path: "/data/mysql"
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新deployment
+kubectl apply -f mysql.deploy2.yaml 
+
+查看pod
+kubectl get pod -n blog -o wide
+
+到NFS节点上查看目录
+ll /data/mysql/
+
+
+Lab 3 使用PVC和PV
+
+使用PVC更新 mysql.deploy.yaml
+nano mysql.deploy3.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        persistentVolumeClaim: # 使用PVC
+          claimName: mysqldata
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新deployment
+kubectl apply -f mysql.deploy3.yaml
+
+查看pod状态
+kubectl get pod -n blog -o wide
+  *pod处于pending状态
+
+查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *可以看到无法找到pvc
+
+使用以下范例创建pvc定义文件
+nano mysql.pvc.yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+创建pvc
+kubectl apply -f mysql.pvc.yaml 
+
+查看pvc，pvc是定义在命名空间
+kubectl get pvc -n blog
+
+再次查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *状态依然是pending，pvc绑定出错
+
+查看pvc状态
+kubectl describe pvc mysqldata -n blog
+  *可以看到没有可用pv
+
+使用以下范例定义pv （需要替换NFS服务器ip地址）
+nano mysql.pv.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysqldata-pv
+  labels:
+    name: mysqldata-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  nfs:
+    server: 192.168.0.123
+    path: /data/mysql
+  
+创建pv
+kubectl apply -f mysql.pv.yaml
+
+查看pv
+kubectl get pv -o wide
+  *已经和此前的pvc绑定
+
+查看pv详细信息
+kubectl describe pv mysqldata-pv -n blog
+  *可以看到它所对应的目录  
+
+查看pvc
+kubectl get pvc -n blog -o wide
+
+查看pvc状态
+kubectl describe pvc mysqldata -n blog
+
+
+再次查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *一切OK
+
+清理资源
+kubectl delete -f mysql.deploy3.yaml 
+kubectl delete -f mysql.pvc.yaml
+kubectl delete -f mysql.pv.yaml
+
+
+Lab 4 使用存储类
+
+安装NFS CSI，进入csi文件夹
+kubectl apply -f ./
+
+查看csi对应pod
+kubectl get pod -n kube-system -o wide | grep csi
+  *等待csi-nfs相关pod就绪之后再进行后续步骤
+
+创建StorageClass定义文件 （需要替换NFS服务器ip地址）
+
+nano nfs-sc.yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-csi
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.0.123 # 指定nfs服务器地址
+  share: /data
+reclaimPolicy: Retain  # only retain is supported
+volumeBindingMode: Immediate
+mountOptions:
+  - hard
+  - nfsvers=4.1
+
+创建SC 
+kubectl apply -f nfs-sc.yaml
+
+查看sc 
+kubectl get sc -o wide
+
+将nfs-csi设置为默认存储类
+kubectl patch storageclass nfs-csi -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+再次查看sc 
+kubectl get sc 
+
+使用以下样例创建pvc yaml
+nano pvc002.yaml
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc002
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-csi
+  resources:
+    requests:
+      storage: 10Gi
+
+创建pvc
+kubectl apply -f pvc002.yaml 
+
+查看pvc
+kubectl get pvc
+  *可以看到自动创建的pv
+
+查看pv 
+kubectl get pv -o wide
+  
+到NFS节点上查看目录
+ll /data/
+  *可以看到pv对应的目录
+
+更新mysql pvc文件
+nano mysql.pvc2.yaml 
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-csi # 指定使用存储类
+  resources:
+    requests:
+      storage: 5Gi
+
+更新PVC
+kubectl apply -f mysql.pvc2.yaml
+
+查看pvc
+kubectl get pvc -n blog -o wide
+  *可以看到系统自动创建了pv
+
+查看pv
+kubectl get pv -o wide
+  
+查看pv详细信息
+kubectl describe pv pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3 -n blog
+  *重点关注pv所对应路径
+
+在NFS节点上查看pv所对应的目录
+ll /data/pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3/
+  *此时应该是空的
+
+重新创建mysql
+kubectl apply -f mysql.deploy3.yaml 
+
+再次查看pv所对应的目录
+ll /data/pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3/
+  *此时应该有料
+
+
+清理环境
+kubectl delete -f mysql.deploy3.yaml 
+kubectl delete -f mysql.pvc2.yaml
+kubectl delete -f pvc002.yaml
+
+
+
+附录：Ubuntu 安装NFS过程 (建议放到2号节点)
+
+安装NFS，每台机器上都要做
+apt install -y nfs-kernel-server
+
+创建共享目录
+mkdir /data
+
+设置共享权限
+chmod 777 -R /data
+
+创建实验用目录
+mkdir /data/mysql
+
+nano /etc/exports
+
+/data *(rw,no_root_squash)
+
+重启服务（如果节点重启之后，共享丢失，请重做此步）
+systemctl restart nfs-server
+
+设置开机自启
+systemctl enable nfs-server
+
+在其他节点上进行测试
+showmount -e nfs-server
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  

@@ -1,0 +1,2771 @@
+
+*Pod-Lab
+
+
+Pod 相关操作
+
+Lab 1 极简创建Pod
+
+使用命令行创建pod，注意两个必须的属性名称和映像
+kubectl run nginx --image=nginx
+
+查看pod
+kubectl get pods
+
+观测其他属性，比如ip地址，所在节点
+kubectl get pods -o wide 
+
+删除现有pod，准备另起炉灶
+kubectl delete pod nginx
+
+查看yaml样例
+kubectl run nginx --image=nginx --dry-run=client -o yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: nginx
+  name: nginx
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+
+查看kind定义
+kubectl api-resources
+
+查看version定义
+kubectl explain pods
+
+创建yaml文件，使用最简配置
+nano nginx.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+
+创建pod
+kubectl apply -f nginx.yaml
+
+查看pod
+kubectl get pod -o wide
+
+使用pod ip地址访问pod
+curl 10.244.60.7
+
+查看pod详细信息
+kubectl describe pod nginx
+ *分段查看重点字段内容
+
+查看pod yaml文件
+kubectl get pods -o yaml
+
+进入pod中的容器（亦可使用/bin/sh）
+kubectl exec -it nginx -- /bin/bash
+
+在容器上下文里查看DNS地址
+cat /etc/resolv.conf 
+
+退出容器上下文
+exit
+
+查看pod日志
+kubectl logs nginx
+
+加参数查看滚动日志
+kubectl  logs -f  nginx
+
+
+Lab 2 创建多容器pod
+
+使用示例文件创建yaml文件
+nano many-pods.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: many-pods
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  - name: redis # 多容器
+    image: redis
+  - name: memcached # 多容器
+    image: memcached
+
+创建pod
+kubectl apply -f many-pods.yaml
+
+查看pod
+kubectl get pods
+
+查看pod详细信息
+kubectl describe pod many-pods
+
+进入pod中的容器
+kubectl exec -it many-pods -- /bin/bash
+ *因为没有指定容器名字，因此进入的是第一个容器
+
+退出nginx容器上下文
+exit
+
+加-c参数进入redis容器
+kubectl exec -it many-pods -c redis -- /bin/bash
+
+在redis容器上下文执行redis-cli
+redis-cli
+
+退出redis容器上下文，需执行两次
+exit
+
+加-c参数进入memcached容器
+kubectl exec -it many-pods -c memcached -- /bin/bash
+
+在memcached容器上下文执行命令
+memcached --help
+
+退出memcache容器上下文
+exit
+
+清理pod
+kubectl delete -f many-pods.yaml 
+
+
+
+Lab 3 注入环境变量
+
+查看本机环境变量
+env
+
+进入nginx pod中的容器
+kubectl exec -it nginx -- /bin/bash
+
+查看容器的环境变量
+env
+ *查看变量的格式
+
+退出容器上下文
+exit
+
+使用示例文件创建yaml文件
+nano nginx-env.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-env
+spec:
+  dnsPolicy: Default
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    env: # 环境变量
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-env.yaml 
+
+进入pod中的容器
+kubectl exec -it nginx-env -- /bin/bash
+
+查看容器的环境变量
+env
+ *验证环境变量
+
+退出容器上下文
+exit
+
+清理pod
+kubectl delete -f nginx-env.yaml 
+
+
+Lab 4 定义pod执行的任务
+查看nginx的Dockefile，着重查看最后一行
+CMD ["nginx", "-g", "daemon off;"]
+
+进入 nginx pod中的容器
+kubectl exec -it nginx -- /bin/bash
+
+安装procps
+apt update
+apt install -y procps
+
+查看nginx的启动参数
+ps -ef 
+
+退出容器上下文
+exit
+
+使用示例文件创建yaml文件
+nano nginx-args.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-args
+  namespace: default
+  labels:
+    app: nginx-args
+spec:
+  dnsPolicy: Default
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    command: #启动参数
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-args.yaml 
+
+进入 nginx-env pod中的容器
+kubectl exec -it nginx-args -- /bin/bash
+
+安装procps，如果速度慢，可以根据备注中的提示换源
+apt update
+apt install procps
+
+查看nginx的启动参数
+ps -ef 
+
+退出容器上下文
+exit
+
+清理pod
+kubectl delete -f  nginx-args.yaml 
+
+
+Lab 5 定义pod volume：hostpath
+
+使用示例文件创建yaml文件
+nano nginx-volume-hostpath.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-volume-hostpath
+  namespace: default
+  labels:
+    app: nginx-volume-hostpath
+  annotations:
+    app: nginx-volume-hostpath
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  volumes: # 定义卷
+  - name: web-root
+    hostPath:
+      path: /data
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts: # 挂接卷
+    - name: web-root
+      mountPath: /data
+    command:
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-volume-hostpath.yaml
+
+进入pod中的容器
+kubectl exec -it nginx-volume-hostpath -- /bin/bash
+
+查看路径
+df -hT
+ *重点关注 /data 目录
+
+尝试创建文件
+cd /data/
+touch aaa
+touch bbb
+echo "abraham is here" > ccc
+ls 
+
+退出容器上下文
+exit
+
+查看pod
+kubectl get pod -o wide
+*关注pod所在的节点
+
+在上述节点上下文中执行以下操作查看文件
+cd /data/
+ls
+cat ccc
+
+排空pod所在节点
+kubectl drain k8s02 --ignore-daemonsets --force
+
+重新创建pod
+kubectl apply -f nginx-volume-hostpath.yaml 
+
+再次进入pod中的容器
+kubectl exec -it nginx-volume-hostpath -- /bin/bash
+
+查看路径
+df -hT
+ *重点关注 /data 目录
+
+查看文件
+cd /data/
+ls
+ *荡然无存
+
+退出容器上下文
+exit
+
+清理pod
+kubectl delete -f nginx-volume-hostpath.yaml 
+
+恢复此前被排空的节点
+kubectl uncordon cka-0003
+
+确认节点状态
+kubectl get node -o wide
+
+
+Lab 6 定义pod volume：emptyDir
+
+使用示例文件创建yaml文件
+nano nginx-volume-emptydir.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-volume-emptydir
+  namespace: default
+  labels:
+    app: nginx-volume-emptydir
+  annotations:
+    app: nginx-volume-emptydir
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path # 不用定义本地路径
+    emptyDir: 
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path # 挂接emptyDir
+      mountPath: /www
+    command:
+    - sleep 
+    args:
+    - "3600"
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-volume-emptydir.yaml 
+
+查看pod
+kubectl get pod -o wide
+*确认pod所在的节点
+
+进入pod中的容器
+kubectl exec -it nginx-volume-emptydir -- /bin/bash
+
+查看路径
+df -hT
+ *看不到此前定义的www目录
+
+尝试盲操作进入www目录，并创建文件
+cd /www/
+touch aaa
+ls
+
+退出容器上下文
+exit
+
+删除并重新创建pod
+kubectl delete -f nginx-volume-emptydir.yaml
+kubectl apply -f nginx-volume-emptydir.yaml 
+
+查看pod
+kubectl get pod -o wide
+*确认pod所在的节点没有变化
+
+再次进入pod中的容器
+kubectl exec -it nginx-volume-emptydir -- /bin/bash
+
+尝试进入WWW目录，并查看文件列表
+cd /www/
+ls
+ *都是空的所以这个故事告诉我们emptyDir就是一场空
+
+退出容器上下文
+exit
+
+清理 pod
+kubectl delete -f nginx-volume-emptydir.yaml
+
+
+Lab 7 使用initcontainer执行初始化作业
+
+使用示例文件创建yaml文件
+nano nginx-initcontainer.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-initcontainer
+  namespace: default
+  labels:
+    app: nginx-initcontainer
+  annotations:
+    app: nginx-initcontainer
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path # 定义emptyDir
+    emptyDir: 
+  initContainers:  # 定义initContainers
+  - name: pullcode
+    image: busybox # initContainer使用的映像
+    volumeMounts:
+    - name: web-path # initContainers挂接emptyDir
+      mountPath: /data
+    command:
+    - /bin/sh
+    - -c
+    - "echo hello > /data/index.html"
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path # 主容器挂接emptyDir
+      mountPath: /usr/share/nginx/html
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-initcontainer.yaml 
+
+查看pod详细信息
+kubectl describe pod nginx-initcontainer
+ *确定容器的启动和执行
+
+查看pod
+kubectl get pod -o wide
+ *确定容器的ip地址
+
+访问pod
+curl http://podip
+
+进入pod中的容器
+kubectl exec -it nginx-initcontainer -- /bin/bash
+
+在pod上下文中检查初始化过程注入的文件
+cd /usr/share/nginx/html/
+ls
+cat index.html 
+ *此处应该有hello
+
+退出容器上下文
+exit
+
+尝试查看initcontainer的日志
+kubectl logs nginx-initcontainer pullcode
+ *因为场景过于简单，此处为空
+
+清理pod
+kubectl delete -f nginx-initcontainer.yaml 
+
+
+Lab 8 设置pod资源
+
+使用示例文件创建yaml文件
+nano nginx-resources.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-resources
+  namespace: default
+  labels:
+    app: nginx-resources
+  annotations:
+    app: nginx-resources
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  hostAliases:
+  - ip: "192.168.0.181"
+    hostnames:
+    - "cka01"
+    - "cka-master"
+  - ip: "192.168.0.41"
+    hostnames:
+    - "cka02"
+  - ip: "192.168.0.241"
+    hostnames:
+    - "cka03"
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path
+    emptyDir: 
+  initContainers:
+  - name: pullcode
+    image: busybox
+    volumeMounts:
+    - name: web-path
+      mountPath: /data
+    command:
+    - /bin/sh
+    - -c
+    - "echo hello > /data/index.html"
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    resources:  # 定义资源使用
+      requests: # 下限
+        cpu: "0.1"
+        memory: "32Mi"
+      limits: # 上限
+        cpu: "0.2"
+        memory: "64Mi"
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path
+      mountPath: /usr/share/nginx/html
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-resources.yaml 
+
+查看pod详细信息
+kubectl describe pod nginx-resources
+ *关注QoSClass定义
+
+查看另一个pod详细信息
+kubectl describe pod nginx
+ *关注QoSClass定义
+
+清理pod
+kubectl delete -f nginx-resources.yaml 
+
+
+Lab 9 pod健康检查
+
+使用示例文件创建yaml文件
+nano nginx-healthcheck-readinessprobe.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-readinessprobe
+  namespace: default
+  labels:
+    app: nginx-readinessprobe
+  annotations:
+    app: nginx-readinessprobe
+spec:
+  dnsPolicy: Default
+  hostNetwork: false
+  restartPolicy: Always
+  hostAliases:
+  - ip: "192.168.0.181"
+    hostnames:
+    - "cka01"
+    - "cka-master"
+  - ip: "192.168.0.41"
+    hostnames:
+    - "cka02"
+  - ip: "192.168.0.241"
+    hostnames:
+    - "cka03"
+  volumes:
+  - name: web-root
+    hostPath:
+      path: /data
+  - name: web-path
+    emptyDir: 
+  initContainers:
+  - name: pullcode
+    image: busybox
+    volumeMounts:
+    - name: web-path
+      mountPath: /data
+    command:
+    - /bin/sh
+    - -c
+    - "echo hello > /data/index.html; touch /data/healthy"
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: Always
+    resources:
+      requests:
+        cpu: "0.1"
+        memory: "32Mi"
+      limits:
+        cpu: "0.2"
+        memory: "64Mi"
+    startupProbe: # 启动检查，脚本探活
+      exec:
+        command:
+          - /bin/sh
+          - -c
+          - "cat /usr/share/nginx/html/healthy"
+      initialDelaySeconds: 5 
+      periodSeconds: 1
+      timeoutSeconds: 1
+      failureThreshold: 18
+      successThreshold: 1 
+    livenessProbe:  # 存活检查，端口探活
+      tcpSocket:
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1 
+    readinessProbe: # 就绪检查，路径探活
+      httpGet:
+        port: 8080
+        path: /
+      periodSeconds: 1
+      timeoutSeconds: 1
+      failureThreshold: 3
+      successThreshold: 1 
+    volumeMounts:
+    - name: web-root
+      mountPath: /data
+    - name: web-path
+      mountPath: /usr/share/nginx/html
+    env:
+    - name: mysqlhost
+      value: "10.96.0.110"
+    - name: mysqlport
+      value: "3306"
+    - name: mysqldb
+      value: "wordpress"
+    ports:
+    - name: web-port
+      containerPort: 80
+      protocol: TCP
+
+创建pod
+kubectl apply -f nginx-healthcheck-readinessprobe.yaml 
+
+查看pod
+kubectl get pod -o wide
+ *多查看几次，可以观测到pod有重启现象
+
+查看pod详细信息
+kubectl describe pod nginx-readinessprobe
+ *可以观察到Liveness和Readiness都有报错
+
+删除pod 
+kubectl delete -f nginx-healthcheck-readinessprobe.yaml 
+
+修改yaml文件
+nano nginx-healthcheck-readinessprobe.yaml
+ *将livenessProbe的端口号改为80
+
+重新创建pod
+kubectl apply -f nginx-healthcheck-readinessprobe.yaml 
+
+查看pod
+kubectl get pod -o wide
+ *多查看几次，pod虽然不再重启，但是一直未能就绪
+
+查看pod详细信息
+kubectl describe pod nginx-readinessprobe
+ *可以观察到Readiness还有报错
+
+删除pod 
+kubectl delete -f nginx-healthcheck-readinessprobe.yaml 
+
+修改yaml文件
+nano nginx-healthcheck-readinessprobe.yaml
+ *将readinessProbe的端口号改为80
+
+重新创建pod
+kubectl apply -f nginx-healthcheck-readinessprobe.yaml 
+
+查看pod
+kubectl get pod -o wide
+ *pod应该很快完全就绪
+
+查看pod详细信息
+kubectl describe pod nginx-readinessprobe
+ *除了查看Events中没有报错信息之外，重点查看Condition中各个阶段是否都已经Ready
+
+ 清理pod
+ kubectl delete -f nginx-healthcheck-readinessprobe.yaml 
+
+
+备注
+1.语法查询
+
+查询pods语法
+kuectl explain pods
+
+查询pods详细语法
+kubectl explain pods --recursive
+
+kubectl explain pods --recursive | more 
+
+
+2. kubectl 开机自启
+
+systemctl start kubelet;sudo yum install -y nano
+
+sudo systemctl start kubelet && sudo systemctl enable kubelet
+
+
+3. 换源，使用清华大学debian源
+
+cat > /etc/apt/sources.list << EOF 
+
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-updates main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-updates main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-backports main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ buster-backports main contrib non-free
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-security buster/updates main contrib non-free
+# deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security buster/updates main contrib non-free
+
+EOF
+
+
+*Deployment-Lab
+
+
+Lab 1 生成deployment yaml文件
+
+使用以下命令生成deployment的原始配置
+kubectl create deployment webserver --image=nginx --dry-run=client -o yaml 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null # 删掉
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  replicas: 1 # 定义副本数量
+  selector: # 通过lable定义所管理的pod
+    matchLabels:
+      app: webserver
+  strategy: {} # 定义滚动升级的策略
+  template: # 此处以下替换成pod yaml文件，注意缩进
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: webserver # 使用相同的lable和deployment保持对仗工整
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        resources: {}
+status: {} #删掉
+
+做变造，并将之前的pod的最终版yaml文件整合（copy）进来，注意缩进以及Pod的label和depolyment的lable保持一致（）
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webserver
+  strategy: {}
+  template:
+    metadata:
+      name: webserver
+      namespace: default
+      labels:
+        app: webserver
+    spec:
+      dnsPolicy: Default
+      hostNetwork: false
+      restartPolicy: Always
+      hostAliases:
+      - ip: "192.168.0.181"
+        hostnames:
+        - "cka01"
+        - "cka-master"
+      - ip: "192.168.0.41"
+        hostnames:
+        - "cka02"
+      - ip: "192.168.0.241"
+        hostnames:
+        - "cka03"
+      volumes:
+      - name: web-root
+        hostPath:
+          path: /data
+      - name: web-path
+        emptyDir: 
+      initContainers:
+      - name: pullcode
+        image: busybox
+        volumeMounts:
+        - name: web-path
+          mountPath: /data
+        command:
+        - /bin/sh
+        - -c
+        - "echo hello > /data/index.html; touch /data/healthy"
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "0.1"
+            memory: "32Mi"
+          limits:
+            cpu: "0.2"
+            memory: "64Mi"
+        startupProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "cat /usr/share/nginx/html/healthy"
+          initialDelaySeconds: 5 
+          periodSeconds: 1
+          timeoutSeconds: 1
+          failureThreshold: 18
+          successThreshold: 1 
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1 
+        readinessProbe:
+          httpGet:
+            port: 80
+            path: /
+          periodSeconds: 1
+          timeoutSeconds: 1
+          failureThreshold: 3
+          successThreshold: 1 
+        volumeMounts:
+        - name: web-root
+          mountPath: /data
+        - name: web-path
+          mountPath: /usr/share/nginx/html
+        env:
+        - name: mysqlhost
+          value: "10.96.0.110"
+        - name: mysqlport
+          value: "3306"
+        - name: mysqldb
+          value: "wordpress"
+        ports:
+        - name: web-port
+          containerPort: 80
+          protocol: TCP
+
+当然了我们为了减少复杂度，会有一个简版的
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  replicas: 1 # 定义副本数量
+  selector: # 通过lable定义所管理的pod
+    matchLabels:
+      app: webserver
+  strategy: {} # 定义滚动升级的策略
+  template: # 此处以下替换成pod yaml文件，注意缩进
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: webserver # 使用相同的lable和deployment保持对仗工整
+    spec:
+      containers: #以下是简版的设置
+      - image: nginx:1.7.9
+        name: nginx
+        resources: {}
+
+
+使用示例文件创建yaml文件
+nano deployment.yaml
+
+创建deployment
+kubectl apply -f deployment.yaml
+
+查看deployment列表
+kubectl get deployment -o wide
+
+查看deployment细节
+kubectl describe deployment webserver
+
+kubectl get deployment -o yaml
+
+查看pod
+kubectl get pod -o wide
+
+删除某个pod
+kubectl delete pod webserver-cd448c495-7z9mx
+
+观测pod重建过程
+kubectl get pod -o wide
+
+编辑deployment，将副本数调整成5个
+KUBE_EDITOR="nano" kubectl edit deployment webserver
+
+观测pod横向扩展过程
+kubectl get pod -o wide
+
+编辑deployment，将副本数调整成1个
+KUBE_EDITOR="nano" kubectl edit deployment webserver
+
+观测pod横向收缩过程
+kubectl get pod -o wide
+
+使用命令进行扩展
+kubectl scale deployment webserver --replicas=3
+
+观测pod横向扩展过程
+kubectl get pod -o wide -w 
+
+删除deployment
+kubectl delete -f deployment.yaml 
+
+Lab 2 deployment的滚动更新策略
+
+使用示例文件创建yaml文件
+nano webserver-strategy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webserver-strategy
+  name: webserver-strategy
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: webserver-strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:  # 滚动更新策略
+      maxUnavailable: 2 # 先下线两个
+      maxSurge: 0
+  template:
+    metadata:
+      name: webserver
+      namespace: default
+      labels:
+        app: webserver-strategy
+    spec:
+      containers:
+      - image: nginx:1.7.9
+        name: nginx
+        resources: {}
+
+
+创建deployment
+kubectl apply -f webserver-strategy.yaml 
+
+查看deployment列表,关注pod节点数映像版本信息
+kubectl get deployment -o wide
+
+查看deployment细节，确定目前的deployment的滚动更新策略：RollingUpdateStrategy
+kubectl describe deployment webserver-strategy
+
+修改deployment配置，将映像版本提升到1.8
+kubectl set image deployment webserver-strategy nginx=nginx:1.8
+
+观察pod滚动升级过程
+kubectl get pod -o wide -w 
+
+查看deployment列表,重点关注映像版本信息
+kubectl get deployment -o wide
+
+修改deployment滚动升级配置，配置为以下设置
+nano webserver-strategy.yaml
+      maxSurge: 2 #先上线两个
+      maxUnavailable: 0
+
+更新deployment
+kubectl apply -f webserver-strategy.yaml 
+
+查看deployment细节，确定目前的deployment的滚动更新策略
+kubectl describe deployment webserver-strategy
+
+修改deployment配置，将映像版本提升到1.9.1
+kubectl set image deployment webserver-strategy nginx=nginx:1.9.1
+
+观测pod滚动升级过程
+kubectl get pod -o wide -w 
+
+查看版本历史信息
+kubectl rollout history deployment/webserver-strategy
+
+查看历史版本
+kubectl rollout history deployment/webserver-strategy  --revision=3
+
+kubectl rollout history deployment/webserver-strategy  --revision=2
+
+回滚到ver 2版本
+kubectl rollout undo deployment/webserver-strategy --to-revision=2
+
+验证回滚结果
+kubectl get deployment -o wide
+
+删除deployment
+kubectl delete -f webserver-strategy.yaml
+
+Lab 3 StatefulSet
+
+使用示例文件创建yaml文件
+nano webserver.yaml
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  serviceName: webserver
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webserver
+  template:
+    metadata:
+      name: webserver
+      namespace: default
+      labels:
+        app: webserver
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        resources: {}
+
+
+创建StatefulSet
+kubectl apply -f webserver.yaml
+
+查看pod创建过程
+kubectl get pod -o wide -w
+  *关注pod的名称和ip地址
+
+查看StatefulSet
+kubectl get sts -o wide
+
+kubectl get sts -o yaml
+
+查看StatefulSet细节
+kubectl describe sts webserver
+  *关注UpdateStrategy
+
+修改StatefulSet配置，将映像版本提升到1.9.1
+kubectl set image sts webserver nginx=nginx:1.9.1
+
+观测pod滚动升级过程
+kubectl get pod -o wide -w 
+
+删除StatefulSet
+kubectl delete -f webserver.yaml
+
+Lab 4 Job和CornJob
+
+使用示例文件创建yaml文件
+nano job.yaml
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pi
+spec:
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: resouer/ubuntu-bc 
+        command: ["sh", "-c", "echo 'scale=1000; 4*a(1)' | bc -l "]
+      restartPolicy: Never
+  backoffLimit: 4
+
+创建job
+kubectl create -f job.yaml
+
+观察对应的pod，几秒之后运算结束，pod会进入到completed状态
+kubectl get pod -o wide
+
+查看运算结果
+kubectl logs pi-xxx
+
+查看job对象
+kubectl describe jobs/pi
+
+查看jobs
+kubectl get jobs -o wide
+
+删除job
+kubectl delete -f job.yaml
+
+使用示例文件创建yaml文件
+nano cronjob.yaml
+
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: hello
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: hello
+            image: busybox
+            args:
+            - /bin/sh
+            - -c
+            - date; echo Hello from the Kubernetes cluster
+          restartPolicy: OnFailure
+
+创建cornjob
+kubectl create -f cronjob.yaml
+
+查看pods
+kubectl get pod -o wide
+
+每隔一分钟执行一次查看jobs
+kubectl get jobs -o wide
+
+查看cronjob
+kubectl get cronjob hello
+
+删除cornjob
+kubectl delete -f cronjob.yaml
+
+Lab 5 DaemonSet
+
+使用以下范例，创建deamonset yaml
+nano katacoda-daemonsets.yaml
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+启用DaemonSet
+kubectl apply -f katacoda-daemonsets.yaml 
+
+运行deployment
+kubectl apply -f katacoda.yaml
+
+观察pod
+kubectl get pods -o wide | grep katacoda-daemonsets
+  *每个节点都有一个katacoda-daemonsets pod，master节点暂时还没有
+
+kubectl get pods -o wide  
+  *katacoda pod运行了三个，分布在目前可用的节点上
+
+查看master taints
+kubectl describe node k8s01
+ *特别留意 node-role.kubernetes.io/master
+
+删除master污点，使其能承载工作负载
+kubectl taint node k8s01 node-role.kubernetes.io/master-
+
+查看pod列表，确认katacoda-daemonsets pod运行在每个节点上
+kubectl get pods -o wide | grep katacoda-daemonsets
+
+
+清理deployment
+kubectl delete -f katacoda.yaml 
+
+清理daemonset
+kubectl delete -f katacoda-daemonsets.yaml 
+
+查看pod列表
+kubectl get pod -o wide
+  *曲终人散
+
+
+备注：
+恢复master的taint
+kubectl taint node k8s01 node-role.kubernetes.io/master:NoSchedule
+
+*SVC Lab
+
+Lab 1 创建deployment
+
+创建kdtacoda deployment示例yaml
+kubectl create deployment katacoda --image=katacoda/docker-http-server --dry-run=client -o yaml 
+进行适当的修改得到示例文件
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: katacoda
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: katacoda
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+使用示例文件创建yaml文件
+nano katacoda.yaml
+
+创建deployment
+kubectl create -f katacoda.yaml
+
+查看pod，重点关注pod的名称和ip地址
+kubectl get pods -o wide
+
+访问其中某个pod，查看访问效果
+curl http://10.244.235.142
+
+
+Lab 2 创建cluster ip svc
+
+创建cluster ip svc yaml示例文件
+kubectl create service clusterip katacoda --tcp 80:80 --dry-run=client -o yaml
+
+经过适当变造得到示例文件
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+  type: ClusterIP
+
+使用示例文件创建yaml文件
+nano katasvc.yaml
+
+创建service发布服务
+kubectl apply -f katasvc.yaml 
+
+查看服务，重点关注TYPE和CLUSTER-IP
+kubectl get svc
+
+使用服务的ip访问
+curl 10.100.79.233
+ *多访问几次，观察负载均衡效果
+
+
+Lab 3 创建nodeport svc服务
+
+创建nodeport svc yaml示例文件
+kubectl create service nodeport katacoda --tcp 80:80 --dry-run=client -o yaml
+
+经过适当变造得到示例文件
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda2
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+  type: NodePort
+
+使用示例文件创建yaml文件
+nano katasvc2.yaml
+
+创建service发布服务
+kubectl apply -f katasvc2.yaml 
+
+查看服务，重点关注TYPE和Port
+kubectl get svc
+
+使用主机名/IP地址加端口号的方式进行访问
+curl k8s01:30363
+ *如果使用云主机做实验，也可用节点的公网IP地址加端口方式进行访问，但是前提是需要设置网络安全组
+
+修改nodeport端口到30080
+KUBE_EDITOR="nano" kubectl edit svc katacoda2
+
+ports:
+  - name: 80-80
+    nodePort: 30080 # 指定端口
+    port: 80
+    protocol: TCP
+    targetPort: 80
+
+  *亦可参照该范例修改ymal文件
+
+查看服务，重点关注TYPE和Port
+kubectl get svc
+
+Lab 4 创建 none clusterIP服务，并进行名称解析
+
+使用示例文件创建yaml文件
+nano katasvc3.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda3
+spec:
+  clusterIP: None
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+
+创建none clusterIP 发布服务
+kubectl apply -f katasvc3.yaml 
+
+查看服务，重点关注katacoda3的CLUSTER-IP
+kubectl get svc
+
+创建busybox pod，进行dns解析
+kubectl run test-dns --image=busybox:1.28 -- sleep 3600
+
+进入pod
+kubectl exec -it test-dns -- /bin/sh 
+
+解析
+nslookup katacoda3.default.svc.cluster.local
+  *多执行几次，观察轮询效果
+
+退出pod上下文
+exit
+
+Lab 5 使用ingress发布服务
+
+使用 ver 3.0创建yaml
+kubectl apply -f ingress-nginx.yaml 
+# kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+
+查看ingress-nginx的pod
+kubectl get pods -n ingress-nginx -o wide
+  *关注ingress-nginx-controller所在节点
+
+查看ingress-nginx的svc  
+kubectl get svc -n ingress-nginx
+
+使用以下范例创建ingress文件
+nano katacoda.ingress.yaml 
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: katacoda-ingress
+spec:
+  rules:
+  - host: hello.example.com # 主机名
+    http:
+      paths:
+      - path: / # 路径
+        pathType: Prefix
+        backend: # 后端服务
+          service:
+            name: katacoda 
+            port:
+              number: 80 
+
+创建ingress
+kubectl apply -f katacoda.ingress.yaml 
+
+查看ingress，观察ADDRESS选项
+kubectl get ingress
+
+使用以下命令测试ingress
+curl http://192.168.0.36 -H "Host: hello.example.com"
+
+亦可修改hosts文件
+nano /etc/hosts
+ * 192.168.0.36    hello.example.com
+
+测试
+curl http://hello.example.com
+
+清理deploymen和服务
+kubectl delete -f katacoda.ingress.yaml 
+kubectl delete -f katasvc3.yaml 
+kubectl delete -f katasvc2.yaml 
+kubectl delete -f katasvc.yaml 
+kubectl delete -f katacoda.yaml
+kubectl delete pod test-dns
+
+
+备注
+查看创建服务的帮助文件
+kubectl create service --help
+
+kubectl create service clusterip --help
+
+
+创建kdtacoda deployment示例yaml
+kubectl create deployment katacoda --image=katacoda/docker-http-server --dry-run=client -o yaml 
+
+创建cluster ip svc yaml示例文件
+kubectl create service clusterip katacoda --tcp 80:80 --dry-run=client -o yaml
+
+创建nodeport svc yaml示例文件
+kubectl create service nodeport katacoda --tcp 80:80 --dry-run=client -o yaml
+
+ *上述文件需要做少量的清理工作，注意缩进，svc如果要共存，则需要在对第二个文件中的服务名进行重命名
+
+
+ingress ver 3.0 范例
+
+https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+
+
+*Storage-Lab
+
+
+
+Lab 1 hostpath实现方式
+
+创建名称空间
+kubectl create ns blog
+
+分析原版mysql deployment配置文件
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+使用hostPath更新 mysql.deploy.yaml
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        hostPath:
+          path: /mysql
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+运行mysql deployment
+kubectl apply -f mysql.deploy.yaml
+
+查看pod，关注mysql pod所在节点的信息
+kubectl get pod -n blog -o wide
+
+切换到上述节点的上下文，检查volumen映射效果
+ll /mysql/
+
+ 
+Lab 2 使用NFS进行数据持久化 （Ubuntu 系统安装NFS步骤请见附录）
+
+在master节点上安装NFS工具
+yum install -y nfs-utils
+
+创建共享目录
+mkdir /data
+
+设置共享权限
+chown nobody.nobody -R /data
+
+echo "/data *(rw,no_root_squash)" >> /etc/exports
+
+重启服务（如果节点重启之后，共享丢失，请重做此步）
+systemctl restart nfs-server
+
+设置开机自启
+systemctl enable nfs-server
+
+showmount -e 192.168.0.123 （需要替换NFS服务器ip地址）
+  *如果共享成功可以看到data目录
+
+创建之后所需的mysql目录
+mkdir /data/mysql
+
+在其他机器上执行安装NFS工具和检查挂接
+yum install -y nfs-utils
+
+showmount -e 192.168.0.123
+
+在其他节点上进行测试
+mount -t nfs 192.168.0.123:data /mnt
+
+查看挂接点，通常在最后一行
+df -hT
+
+摘除
+umount /mnt
+
+# 有关Ubuntu的NFS操作步骤请参见附录
+
+使用NFS更新 mysql.deploy.yaml （需要替换NFS服务器ip地址）
+nano mysql.deploy2.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        nfs: # 使用NFS
+          server: 192.168.0.123
+          path: "/data/mysql"
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新deployment
+kubectl apply -f mysql.deploy2.yaml 
+
+查看pod
+kubectl get pod -n blog -o wide
+
+到NFS节点上查看目录
+ll /data/mysql/
+
+
+Lab 3 使用PVC和PV
+
+使用PVC更新 mysql.deploy.yaml
+nano mysql.deploy3.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes: # 定义卷
+      - name: mysqldata
+        persistentVolumeClaim: # 使用PVC
+          claimName: mysqldata
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:    #设定挂接点
+        - name: mysqldata
+          mountPath: /var/lib/mysql
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新deployment
+kubectl apply -f mysql.deploy3.yaml
+
+查看pod状态
+kubectl get pod -n blog -o wide
+  *pod处于pending状态
+
+查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *可以看到无法找到pvc
+
+使用以下范例创建pvc定义文件
+nano mysql.pvc.yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+创建pvc
+kubectl apply -f mysql.pvc.yaml 
+
+查看pvc，pvc是定义在命名空间
+kubectl get pvc -n blog
+
+再次查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *状态依然是pending，pvc绑定出错
+
+查看pvc状态
+kubectl describe pvc mysqldata -n blog
+  *可以看到没有可用pv
+
+使用以下范例定义pv （需要替换NFS服务器ip地址）
+nano mysql.pv.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysqldata-pv
+  labels:
+    name: mysqldata-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  nfs:
+    server: 192.168.0.123
+    path: /data/mysql
+  
+创建pv
+kubectl apply -f mysql.pv.yaml
+
+查看pv
+kubectl get pv -o wide
+  *已经和此前的pvc绑定
+
+查看pv详细信息
+kubectl describe pv mysqldata-pv -n blog
+  *可以看到它所对应的目录  
+
+查看pvc
+kubectl get pvc -n blog -o wide
+
+查看pvc状态
+kubectl describe pvc mysqldata -n blog
+
+
+再次查看mysql pod详细信息
+kubectl describe pod mysql-deploy-8648fc65f8-dt7l2 -n blog
+  *一切OK
+
+清理资源
+kubectl delete -f mysql.deploy3.yaml 
+kubectl delete -f mysql.pvc.yaml
+kubectl delete -f mysql.pv.yaml
+
+
+Lab 4 使用存储类
+
+安装NFS CSI，进入csi文件夹
+kubectl apply -f ./
+
+查看csi对应pod
+kubectl get pod -n kube-system -o wide | grep csi
+  *等待csi-nfs相关pod就绪之后再进行后续步骤
+
+创建StorageClass定义文件 （需要替换NFS服务器ip地址）
+
+nano nfs-sc.yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-csi
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.0.123 # 指定nfs服务器地址
+  share: /data
+reclaimPolicy: Retain  # only retain is supported
+volumeBindingMode: Immediate
+mountOptions:
+  - hard
+  - nfsvers=4.1
+
+创建SC 
+kubectl apply -f nfs-sc.yaml
+
+查看sc 
+kubectl get sc -o wide
+
+
+更新mysql pvc文件
+nano mysql.pvc2.yaml 
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysqldata
+  namespace: blog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-csi # 指定使用存储类
+  resources:
+    requests:
+      storage: 5Gi
+
+更新PVC
+kubectl apply -f mysql.pvc2.yaml
+
+查看pvc
+kubectl get pvc -n blog -o wide
+  *可以看到系统自动创建了pv
+
+查看pv
+  
+查看pv详细信息
+kubectl describe pv pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3 -n blog
+  *重点关注pv所对应路径
+
+在NFS节点上查看pv所对应的目录
+ll /data/pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3/
+  *此时应该是空的
+
+重新创建mysql
+kubectl apply -f mysql.deploy3.yaml 
+
+再次查看pv所对应的目录
+ll /data/pvc-0ea6bcbf-a977-4451-bada-0358f1ae32d3/
+  *此时应该有料
+
+
+清理环境
+kubectl delete -f mysql.deploy3.yaml 
+kubectl delete -f mysql.pvc2.yaml
+
+
+附录：Ubuntu 安装NFS过程 (建议放到2号节点)
+
+安装NFS，每台机器上都要做
+apt install -y nfs-kernel-server
+
+创建共享目录
+mkdir /data
+
+设置共享权限
+chmod 777 -R /data
+
+创建实验用目录
+mkdir /data/mysql
+
+nano /etc/exports
+
+/data *(rw,no_root_squash)
+
+重启服务（如果节点重启之后，共享丢失，请重做此步）
+systemctl restart nfs-server
+
+设置开机自启
+systemctl enable nfs-server
+
+在其他节点上进行测试
+showmount -e nfs-server
+
+
+*ConfigMap-Secrect-Lab
+
+
+Lab 1 更新mysql的配置文件
+
+
+创建configmap目录并进入
+mkdir configmaps
+
+cd configmaps/
+
+使用范例创建配置文件
+nano mysqld.cnf
+
+[mysqld]
+pid-file  = /var/run/mysqld/mysqld.pid
+socket    = /var/run/mysqld/mysqld.sock
+datadir   = /var/lib/mysql
+symbolic-links=0
+port    = 3306
+
+创建mysql配置文件
+kubectl create configmap mysql-cnf --from-file=./mysqld.cnf -n blog
+
+查看configmap
+kubectl get configmap -n blog
+
+查看configmap详情
+kubectl describe configmap mysql-cnf -n blog
+
+kubectl get configmap mysql-cnf -n blog -o yaml
+
+从显示的配置文件中心进行适当变造，得到configmap的yaml文件
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-cnf
+  namespace: blog 
+data:
+  mysqld.cnf: | # 配置值
+    [mysqld]
+    pid-file  = /var/run/mysqld/mysqld.pid
+    socket    = /var/run/mysqld/mysqld.sock
+    datadir   = /var/lib/mysql
+    symbolic-links=0
+    port    = 3306
+
+
+更新mysql.depoly.yaml(ver 1.0)
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes:
+      - name: mysql-config # 定义configmap 卷
+        configMap:
+          name: mysql-cnf
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: mysql-config # 挂接configmap卷
+          mountPath: /etc/mysql/mysql.conf.d
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+
+更新mysql
+kubectl apply -f mysql.deploy.yaml 
+
+查看blog名称空间
+kubectl get pods -n blog
+
+查看mysql的配置文件
+kubectl exec -it mysql-deploy-5bb8896746-pg5xj -n blog /bin/bash
+
+cat /etc/mysql/mysql.conf.d/mysqld.cnf 
+
+退出pod上下文
+exit
+
+
+Lab 2 键值对configmap的创建和使用
+
+创建新的configmap
+kubectl create configmap test-conf --from-literal=user=bob --from-literal=password=123456
+
+查看configmap
+kubectl describe configmap test-conf 
+
+kubectl get configmap test-conf -o yaml
+
+根据yaml文件的输出进行适当变造得到如下configmap的yaml文件
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-conf
+  namespace: default
+data:
+  password: "123456" # 明文显示的用户名和密码
+  user: bob
+
+使用样例创建yaml文件
+nano test-conf.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf
+  name: test-conf
+spec:
+  volumes:
+  - name: config
+    configMap:
+      name: test-conf 
+  containers:
+  - image: busybox
+    name: test-conf
+    volumeMounts:
+    - name: config
+      mountPath: /tmp/volume
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+创建pod
+kubectl apply -f test-conf.pod.yaml 
+
+进入pod上下文验证configmap的配置
+kubectl exec -it test-conf /bin/sh
+
+cd /tmp/volume/
+
+ls
+
+cat user
+
+cat password
+
+退出pod上下文
+exit
+
+
+Lab 3 使用env映射configmap
+
+使用样例创建yaml文件
+nano test-conf-2.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf-2
+  name: test-conf-2
+spec:
+  containers:
+  - image: busybox
+    name: test-conf-2
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+    env:
+    - name: USER
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: user
+    - name: PASSWORD
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: password
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+创建pod
+kubectl apply -f test-conf-2.pod.yaml 
+
+进入pod上下文验证configmap的配置
+kubectl exec -it test-conf-2 /bin/sh
+
+env | grep USER
+
+env | grep PASSWORD
+
+退出pod上下文
+exit
+
+
+Lab 4 secrect
+
+查看此前包含密码的configmap
+kubectl describe configmap test-conf
+  *密码是明文显示
+
+创建secret
+kubectl create secret generic mysql-pass --from-literal=password=password -n blog
+
+查看secret
+kubectl get secret -n blog
+
+kubectl describe secret mysql-pass -n blog
+
+kubectl get -o yaml secret mysql-pass -n blog
+  *找到password对应的值
+
+解码password
+echo d29yZHByZXNz | base64 -d
+
+将secrect密文更新到mysql.deploy2.yaml
+nano mysql.deploy2.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes:
+      - name: mysql-config # 定义configmap 卷
+        configMap:
+          name: mysql-cnf
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: mysql-config # 挂接configmap卷
+          mountPath: /etc/mysql/mysql.conf.d
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom: # 从secrect处调用密码
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新mysql
+kubectl apply -f mysql.deploy2.yaml
+
+进入mysql上下文查看env
+kubectl exec -it mysql-deploy-6dbc9776b-5z8n5 /bin/bash -n blog
+
+env
+ *关注MYSQL_ROOT_PASSWORD=password
+ 
+退出pod上下文
+exit
+
+
+Lab 5 使用来自文件的secret
+
+基于文件创建secret
+cd configmap
+
+kubectl create secret generic mysql-conf --from-file=mysqld.cnf
+
+查看secret
+kubectl get secret
+
+kubectl get secret mysql-conf -o yaml
+  *注意，此处mysqld.cnf的值被加密
+
+尝试对这个值进行解码
+echo W215c3FsZF0KcGlkLWZpbGUgID0gL3Zhci9ydW4vbXlzcWxkL215c3FsZC5waWQKc29ja2V0ICAgID0gL3Zhci9ydW4vbXlzcWxkL215c3FsZC5zb2NrCmRhdGFkaXIgICA9IC92YXIvbGliL215c3FsCnN5bWJvbGljLWxpbmtzPTAKcG9ydCAgICA9IDMzMDYK | base64 -d
+
+使用上述范例创建配置文件
+nano test-secret.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-secret
+  name: test-secret
+spec:
+  volumes:
+  - name: test-secret
+    secret:
+      secretName: mysql-conf
+  containers:
+  - image: busybox
+    name: test-secret
+    volumeMounts:
+    - name: test-secret
+      mountPath: /tmp/volume
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+更新pod
+kubectl apply -f test-secret.pod.yaml 
+
+进入pod上下文验证secret的配置
+kubectl exec -it test-secret /bin/sh
+
+cat /tmp/volume/mysqld.cnf
+
+退出pod上下文
+exit
+
+清理
+kubectl delete -f .
+
+
+备注
+
+mysql配置文件的获取
+
+查看blog名称空间
+kubectl get pods -n blog
+
+
+查看mysql的配置文件
+kubectl exec -it mysql-deploy-5bb8896746-pg5xj -n blog /bin/bash
+
+cat /etc/mysql/mysql.conf.d/mysqld.cnf 
+  *copy其中内容如下所示
+
+
+[mysqld]
+pid-file        = /var/run/mysqld/mysqld.pid
+socket          = /var/run/mysqld/mysqld.sock
+datadir         = /var/lib/mysql
+#log-error      = /var/log/mysql/error.log
+# By default we only accept connections from localhost
+#bind-address   = 127.0.0.1
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0
+
+
+
+*Perfmon-Lab
+
+Lab 1 安装metrics-server
+
+使用附录中的范例创建metrics-server的文件
+
+安装metrics-server
+kubectl apply -f metrics-server.yaml
+
+查看pod
+kubectl get pod -n kube-system
+
+kubectl get pod -n kube-system | grep metrics-server
+
+测试功能
+kubectl top node
+
+kubectl top pod
+
+kubectl top pod -A
+
+kubectl top pod | sort -k3 -nr 
+
+kubectl top pod | sort -k3 -nr | head -1 
+
+kubectl top pod | sort -k3 -nr | head -1 | awk '{print $2}'
+
+kubectl top pod | sort -k3 -nr | head -1 | awk '{print $2}' >/tmp/memtop.txt
+  *考试真题
+
+
+Lab 2 HPA
+修改kube-controller-manager.yaml，增加启动参数
+nano /etc/kubernetes/manifests/kube-controller-manager.yaml 
+
+    - --horizontal-pod-autoscaler-use-rest-clients=true
+    - --horizontal-pod-autoscaler-downscale-delay=5m0s
+    - --horizontal-pod-autoscaler-upscale-delay=20s
+    - --horizontal-pod-autoscaler-sync-period=10s
+
+修改好之后，观察kube-controller-manager的自动重启
+kubectl get pod -n kube-system | grep kube-controller-manager
+
+使用范例创建podinfo 
+nano podinfo.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+spec:
+  selector:
+    matchLabels:
+      app: podinfo
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: podinfo
+      annotations:
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+        - name: podinfod
+          image: stefanprodan/podinfo:2.0.0
+          imagePullPolicy: Always
+          #command:
+          #  - ./podinfo
+          #  - -port=9898
+          #  - -logtostderr=true
+          #  - -v=2
+          volumeMounts:
+            - name: metadata
+              mountPath: /etc/podinfod/metadata
+              readOnly: true
+          ports:
+            - containerPort: 9898
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9898
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9898
+            initialDelaySeconds: 1
+            periodSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "1m"
+            limits:
+              memory: "256Mi"
+              cpu: "100m"
+      volumes:
+        - name: metadata
+          downwardAPI:
+            items:
+              - path: "labels"
+                fieldRef:
+                  fieldPath: metadata.labels
+              - path: "annotations"
+                fieldRef:
+                  fieldPath: metadata.annotations
+
+
+创建pod
+kubectl apply -f podinfo.yaml
+
+查看pod，重点关注数量
+kubectl get pod
+
+使用范例创建podinfo HPA
+nano podinfo-hpa.yaml
+
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: podinfo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: AverageValue
+          averageValue: 200M
+
+启用HPA
+kubectl apply -f podinfo-hpa.yaml
+
+查看HPA 关注target和replica
+kubectl get hpa
+
+kubectl get hpa -o yaml
+
+查看pod，重点关注数量，查看水平扩展效果
+kubectl get pod -o wide | grep podinfo
+
+查看pod资源使用
+kubectl top pod | grep podinfo
+
+查看扩展过程
+kubectl describe hpa podinfo
+
+查看deployment
+kubectl describe deploy podinfo
+
+清理
+kubectl delete -f podinfo-hpa.yaml 
+kubectl delete -f podinfo.yaml
+
+
+
+Lab 3 使用Helm安装 kubernetes-dashboard
+
+安装helm
+wget https://chengzhstor.blob.core.chinacloudapi.cn/k8slab/helm-v3.3.0-linux-amd64.tar.gz
+
+tar xf helm-v3.3.0-linux-amd64.tar.gz
+
+mv linux-amd64/helm /usr/bin/
+
+查看helm版本
+helm version
+
+增加repo
+helm repo add incubator http://aliacs-k8s-cn-beijing.oss-cn-beijing.aliyuncs.com/app/charts-incubator
+
+部署dashboard
+helm fetch incubator/kubernetes-dashboard
+
+tar xf kubernetes-dashboard-2.8.1.tgz
+
+cd kubernetes-dashboard
+
+修改配置文件
+nano values.yaml
+  *使用NodePort
+
+安装dashboard
+helm install kubernetes-dashboard -n kube-system ./
+
+查看pod
+kubectl get pod -n kube-system
+
+查看svc
+kubectl get svc -n kube-system  
+  *关注dashboard的端口号
+
+创建一个sa
+kubectl create sa -n kube-system chengzh
+
+给sa赋权
+kubectl create clusterrolebinding chengzh@kubernetes --serviceaccount=kube-system:chengzh --clusterrole=cluster-admin
+
+查看该sa
+kubectl describe sa chengzh -n kube-system
+  *关注token的标识
+
+获取token
+kubectl describe secret chengzh-token-d9z5c -n kube-system
+
+eyJhbGciOiJSUzI1NiIsImtpZCI6ImxJWEg4dUREcXZ2WDhQZHdiNFZoR3BVNi1wU0VJbFZrc1B0RGt4RjVaajgifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJjaGVuZ3poLXRva2VuLWQ5ejVjIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImNoZW5nemgiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJmNjNhOTY1MS05NjhjLTRiOTktYmU1MC1hYjU1MjhhNTIwODgiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06Y2hlbmd6aCJ9.cvza57s6u8ZyJPDv51_3dCOYlTzwomuhD_M7qHRlYMJvDKyOIOrUGrT__DGO6-OMcDS8B7oSvmEuHtslQa1sULuqrF45SCbVOUalWVo6yetifu7VqnfPehO8o_iPmy1jnSGCyvT63GasjQgkYfAd-zDf8yK7gQNot6FSLtA_n3ruo7Hf2L9GUdiCIBzuQetxR4h6-BU4pxDHg4YPDThLkfQS21ns-qFl5YolQF1NbPe1JpQ54z3ZJDTxYriKg4gODBc8PtIkMv4s5knEFscArEjBh5dwHPNi_sVXOp5UD8i6Eq5DslA38ULb12P1hgoDCOBSMXuqqie4N7Wv3cxrfw
+
+使用该token登录到dashboard
+https://nodepublicip:nodeport 
+
+enjoy
+
+
+Lab 4 安装Prometheus Stack实现性能监控分析解决方案  
+
+创建命名空间
+kubectl create ns prom
+
+添加官方repo
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+获取chart
+helm fetch prometheus-community/kube-prometheus-stack  
+
+安装kube-prometheus-stack
+tar xf kube-prometheus-stack-13.9.1.tgz
+
+cd kube-prometheus-stack
+
+helm install kube-prometheus-stack -n prom ./
+
+查看pod和svc
+kubectl get pod -n prom
+
+kubectl get svc -n prom
+
+将grafana的端口映射到nodeport 31121
+kubectl patch svc -n prom kube-prometheus-stack-grafana  -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service kube-prometheus-stack-grafana --namespace=prom --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31121}]'
+
+访问grafana
+http://nodepublicip:31121
+用户名：admin 
+密码：prom-operator
+
+
+Lab 5 安装EFK实现日志收集分析解决方案
+#在每一个节点上执行以下命令修改内核参数
+# sudo sysctl -w vm.max_map_count=262144
+
+创建命名空间
+kubectl create ns efk
+
+在NFS服务器上创建存放pvc的文件夹
+mkdir /data/elasticsearch
+
+下载Helm仓库源码
+wget -O helm-charts.tgz  https://github.com/elastic/helm-charts/archive/7.6.2.tar.gz
+tar -zxvf helm-charts.tgz
+cd helm-charts-7.6.2
+
+使用以下命令行创建Elasticsearch使用的PV
+
+nano es-pv.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: elasticsearch
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /data/elasticsearch
+    server: nfs # 此处使用NFS服务器地址
+
+kubectl create -f es-pv.yaml
+
+更改elasticsearch副本数，此处选用最低副本数
+nano elasticsearch/values.yaml
+  replicas: 1
+  minimumMasterNodes: 1
+
+安装elasticsearch
+helm install es --namespace=efk ./elasticsearch
+
+安装filebeat
+helm install fb --namespace=efk ./filebeat
+
+修改kibana服务参数，使用nodeprot
+nano kibana/values.yaml
+
+  service:
+    type: NodePort
+    port: 5601
+    nodePort: "32001"
+
+安装kibana
+helm install kb --namespace=efk ./kibana
+
+查看pod和svc
+kubectl get pod -n efk
+
+kubectl get svc -n efk
+
+使用32001端口打开kibana界面进行初始化
+
+卸载服务
+helm uninstall es --namespace=efk ./elasticsearch
+helm uninstall fb --namespace=efk ./filebeat
+helm uninstall kb --namespace=efk ./kibana
+
+
+备注：
+EFK步骤
+https://www.cnblogs.com/leozhanggg/p/12700363.html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

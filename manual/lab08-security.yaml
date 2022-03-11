@@ -1,0 +1,679 @@
+Lab 0 
+
+查看master的证书
+cd /etc/kubernetes/pki/
+
+ls
+  *ca.crt是ca的自签名证书，ca.key是验证key，其他各个组件分别持有的crt和key也在这个目录中
+
+查看ca.crt
+cat /etc/kubernetes/pki/ca.crt
+  
+对ca.crt进行base64转码
+cat /etc/kubernetes/pki/ca.crt | base64 -w0
+  *对比一下两部分的显示
+
+查看etcd证书
+cd etcd/
+ls
+  *此处存放的是etcd和其他各个组件进行通讯用的证书
+
+查看admin.conf 认证文件架构
+cat /etc/kubernetes/admin.conf 
+  *特别关注证书验证数据certificate-authority-data部分，和之前解码的ca.crt进行对比
+
+
+Lab 1 生成用户证书及配置文件
+
+切换目录
+cd /root/.kube/
+
+生成用户key
+openssl genrsa -out train.key 2048
+
+基于key生成csr
+openssl req -new -key train.key -out train.csr -subj "/CN=train/O=cloudzun"
+
+向ca提交csr生成证书
+openssl x509 -req -in train.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out train.crt -days 500
+
+查看证书和key文件
+ls
+
+备份
+cp config config.20210204
+
+使用命令行创建配置文件
+kubectl config set-credentials train --client-certificate=train.crt  --client-key=train.key
+
+查看config文件
+nano config
+  *确认train的证书和密钥都被填充进来
+
+设置上下文
+kubectl config set-context train@kubernetes --cluster=kubernetes --user=train
+
+查看config文件
+nano config
+  *确认train的上下文被填充进来
+
+查看当前上下文
+kubectl config current-context
+
+查看所有上下文
+kubectl config get-contexts
+  *有星标的是当前上下文
+
+查看config命令行帮助
+kubectl config --help
+  *可以看到有删除重命名上下文的命令
+
+切换上下文
+kubectl config use-context train@kubernetes 
+
+在当前上下文中尝试执行一些命令行操作
+kubectl get pods
+
+kubectl explain pods
+
+  #如果遇到报错，可能需要复制.crt和.key文件到 /root/.kube/
+
+切换回上下文
+kubectl config use-context kubernetes-admin@kubernetes
+
+
+Lab 2 创建SA
+
+创建lab命名空间
+kubectl create namespace lab
+
+创建sa
+kubectl -n lab create serviceaccount lab-sa
+
+定义token变量
+TOKENNAME=`kubectl -n lab get serviceaccount/lab-sa -o jsonpath='{.secrets[0].name}'`
+
+转码token
+TOKEN=`kubectl -n lab get secret $TOKENNAME -o jsonpath='{.data.token}'| base64 --decode`
+
+更新认证文件，增加sa的token
+kubectl config set-credentials lab-sa --token=$TOKEN
+
+更新认证文件，增加sa的上下文
+kubectl config set-context lab-sa@kubernetes --cluster=kubernetes --user=lab-sa
+
+查看config文件的变化
+nano config
+
+切换上下文到sa
+kubectl config use-context lab-sa@kubernetes
+
+执行一些操作
+kubectl get pod -A
+
+切换回上下文
+kubectl config use-context kubernetes-admin@kubernetes
+
+
+Lab 3 给用户授权
+
+查看clusterroles角色
+kubectl get clusterroles -o wide
+
+查看role的定义
+kubectl get -o yaml clusterrole view
+
+kubectl get -o yaml clusterrole edit
+
+通过设置clusterrolebinding给train授予最高权限
+kubectl create clusterrolebinding train@cluster-admin --user=train --clusterrole=cluster-admin
+
+切换到train上下文，执行一些操作
+kubectl config use-context train@kubernetes 
+
+kubectl get pods -A -o wide
+
+查看clusterrolebinding 
+kubectl get clusterrolebinding 
+
+kubectl describe clusterrolebinding train@cluster-admin 
+
+kubectl get clusterrolebinding train@cluster-admin -o yaml
+
+切换回上下文
+kubectl config use-context kubernetes-admin@kubernetes
+
+
+Lab 4 给sa授权
+
+通过创建角色绑定给lab-sa授予lab命名空间的查看权限
+kubectl create rolebinding lab-sa --clusterrole=view --serviceaccount=lab:lab-sa -n lab
+
+切换上下文到sa
+kubectl config use-context lab-sa@kubernetes
+
+执行一些操作
+kubectl get pod -A
+  *失败依旧
+
+在自己地盘里睽睽
+kubectl get pod -n lab
+
+切换回上下文
+kubectl config use-context kubernetes-admin@kubernetes
+
+查看lab命名空间的rolebinding
+kubectl get rolebinding -n lab
+
+kubectl get -o yaml rolebinding lab-sa -n lab
+
+kubectl describe rolebindings lab-sa -n lab
+
+清理环境
+kubectl delete ns lab
+cp config.20210204 config
+
+
+Lab 5 创建internal网络策略
+
+创建命名空间
+kubectl create ns internal
+
+创建测试用deployment
+kubectl create deploy tomcat --image=tomcat -n internal
+
+kubectl create deploy tomcat2 --image=tomcat 
+
+kubectl create deploy redis --image=redis -n internal
+
+使用范例创建yaml
+nano busybox.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: busybox
+  name: busybox
+  namespace: internal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: busybox
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: busybox
+    spec:
+      containers:
+      - image: busybox
+        name: busybox
+        command:
+        - /bin/sh
+        - -c
+        - "sleep 3600"
+
+创建busybox
+kubectl apply -f busybox.yaml
+
+查看pod
+kubectl get pod -A -o wide
+
+尝试进行互访
+kubectl exec -it busybox-7746d74bf5-s7nws /bin/sh -n internal
+
+telnet 10.244.235.163:8080 # 连接本命名空间tomcat
+
+telnet 10.244.236.179:6379 #连接本命名空间redis
+
+telnet 10.244.236.174:8080 # 默认空间的tomcat
+
+按照范例创建yaml
+nano networkpolicy.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-from-namespace
+  namespace: internal
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - port: 8080
+      protocol: TCP
+    - port: 8080
+      protocol: UDP
+  egress:
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: UDP
+      port: 8080
+
+应用策略
+kubectl apply -f networkpolicy.yaml
+
+查看策略
+kubectl get networkpolicy -n internal
+
+kubectl get -o yaml networkpolicy allow-port-from-namespace  -n internal
+
+尝试进行互访
+kubectl exec -it busybox-7746d74bf5-s7nws /bin/sh -n internal
+
+telnet 10.244.235.163:8080 # 连接本命名空间tomcat
+
+telnet 10.244.236.179:6379 #连接本命名空间redis
+
+telnet 10.244.236.174:8080 # 默认空间的tomcat
+
+
+lab 6 控制对internet的访问
+
+创建测试用pod
+kubectl run nginx --image=nginx
+
+使用default命名空间的busybox进行外网访问测试
+kubectl exec -it nginx /bin/sh 
+
+curl https://httpbin.org/ip
+
+curl https://www.baidu.com
+
+退出pod上下文
+exit
+
+给kube-system命名空间打标签
+kubectl label ns kube-system name=kube-system
+
+查看标签
+kubectl describe ns kube-system
+
+使用范例创建yaml
+nano networkpolicyhttpbin.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-from-namespace
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 54.158.248.248/32
+    - ipBlock:
+        cidr: 184.72.216.47/32
+    - ipBlock:
+        cidr: 54.164.234.192/32
+    - ipBlock:
+        cidr: 3.211.1.78/32
+    - namespaceSelector: # 为了能够解析域名，必须定义CoreDNS
+        matchLabels:
+          name: kube-system 
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+
+加载策略
+kubectl apply -f networkpolicyhttpbin.yaml
+
+使用default命名空间的busybox进行外网访问测试
+kubectl exec -it nginx /bin/sh 
+
+curl https://httpbin.org/ip
+
+curl https://www.baidu.com
+
+退出pod上下文
+exit
+
+清理环境
+kubectl delete -f networkpolicyhttpbin.yaml
+kubectl delete -f networkpolicy.yaml
+kubectl delete -f busybox.yaml
+kubectl delete deploy tomcat -n internal
+kubectl delete deploy tomcat2  
+kubectl delete deploy redis -n internal
+kubectl delete pod nginx
+kubectl delete ns internal
+
+
+附录，以下是生成config文件的手工作业部分
+
+手敲config方法，看似比命令行方式笨，但是因为避免了复制证书的操作，反倒是在生产环境中推荐的做法
+
+lab 0
+config模板文件
+
+apiVersion: v1
+kind: Config
+clusters: # 集群信息
+- name: kubernetes # 群集名称
+  cluster:
+    certificate-authority-data: LS0t... # 群集所使用的证书
+    server: https://192.168.0.180:6443 # 群集链接地址
+users: # 用户信息 
+- name: kubernetes-admin # 用户名称
+  user:
+    client-certificate-data: LS0tLS1CRU... # 用户的证书
+    client-key-data: LS0tLS1CRUdJTi... # 用户的密钥
+contexts: # 上下文信息
+- name: kubernetes-admin@kubernetes # 上下文名称
+  context:
+    cluster: kubernetes # 群集名称
+    user: kubernetes-admin # 用户名称
+current-context: kubernetes-admin@kubernetes # 当前上下文
+
+* 资源对象类型及版本
+* 集群信息
+  * 集群名称
+  * 集群的描述
+    * 集群连接地址
+    * 集群所使用的ca证书
+* 用户信息
+  * 用户名称
+  * 用户的证书和密钥
+* 上下文信息
+  * 上下文名称
+  * 这个上下文中绑定的用户和集群名称
+* 当前上下文
+
+
+lab 1，创建用户
+
+查看证书和key文件
+ls
+
+执行train.cet文件的编码，并记录
+cat train.crt | base64 -w0
+
+LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUNzRENDQVpnQ0NRRElxV3luMnR0am5qQU5CZ2txaGtpRzl3MEJBUXNGQURBVk1STXdFUVlEVlFRREV3cHIKZFdKbGNtNWxkR1Z6TUI0WERUSXhNREl3TkRBek1qQXhObG9YRFRJeU1EWXhPVEF6TWpBeE5sb3dIekVPTUF3RwpBMVVFQXd3RmRISmhhVzR4RFRBTEJnTlZCQW9NQkdSbWNuUXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCCkR3QXdnZ0VLQW9JQkFRQ290YjdvQVBNVGtqamR5NDF4TkJUeTZCQkVQTFdZK0hvRE5MRFlzRXd0WGdTdkl6ZzQKQ0FHeVR1YVVmL0FSNXFDWG1xcEJoL3ZudGF0MW5NTkdVeUxQWXZBQy9EeVZWL1M4R0s3ZjVyV3Z5bnFMRlMwbwpLdlJSa0dnRW9QOXk2UVhhRFBYbjRvaVRWSzYyUjJJcTVTdmovSlFMSVBDYXViam5ncmpGY2VNUEpzQWdQNm5mCkhCZDJhMWNMUGpYdUJiQTlPSlJjUW10K0pvRDBYZWNuUkI3TE1xa2EzdmJoK0pCOEdtL3RKNlBOZ2Y3b2YvMlcKZngyU2d2NG9hbUFMb2xCYTdiZUtiWXFlc1NBZUMwMlFPRDNBYmhOZk9nL0gvM0NDVzU3VlVKSXBZWFd6V240NgpST1RxbzQ3czZwL3FhZ053RXNEMjQwdUpsZWFRN3lIVHVZWFBBZ01CQUFFd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBQ2h3blRNcnNBUGdlQVl0SXE1V3BOUk5rdk5idlczZ1VWb1lHMnFMM1FHWVdOWjQyZ0lRUFJBVGE4MTEKUEtYclV4TkZSTVJxOXQzbkxwOEpiUERBSmNzeVU5cG42bThZS2RDcis1cW5OUS9BOUh3WGhnMVN0OFVRYk1YTQpHWFBtMWFXdVlwS0xKbCtmK3JGRWRpTWRIclBEV205Sm1HV3ltYkZ2NFJIdE9UaEo1bWczenNweUE2STdXV3U5CmQ0ejdvOXArNi9kWkcvL1crd0ZzUzVoZXBSUWtJZjBLRXA3dnVvWWdvR1FCTnQrOENIbWVtNmkwMmdScGVnSFMKbWJHbzZyYTNsQ0ltclgvZk1YTWQycys0ZTYwanA2OUQ0UnFodGhoMEo3MENWcEZvVEdPNDVaQnVYYWMwYjkxbgpTM2tkNGlXakcxd1lSWHhMSjhiWm85aS9kUzQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+
+执行train.key文件的编码，并记录
+cat train.key | base64 -w0
+
+LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBcUxXKzZBRHpFNUk0M2N1TmNUUVU4dWdRUkR5MW1QaDZBelN3MkxCTUxWNEVyeU00Ck9BZ0JzazdtbEgvd0VlYWdsNXFxUVlmNzU3V3JkWnpEUmxNaXoyTHdBdnc4bFZmMHZCaXUzK2ExcjhwNml4VXQKS0NyMFVaQm9CS0QvY3VrRjJnejE1K0tJazFTdXRrZGlLdVVyNC95VUN5RHdtcm00NTRLNHhYSGpEeWJBSUQrcAozeHdYZG10WEN6NDE3Z1d3UFRpVVhFSnJmaWFBOUYzbkowUWV5ektwR3Q3MjRmaVFmQnB2N1NlanpZSCs2SC85CmxuOGRrb0wrS0dwZ0M2SlFXdTIzaW0yS25yRWdIZ3ROa0RnOXdHNFRYem9QeC85d2dsdWUxVkNTS1dGMXMxcCsKT2tUazZxT083T3FmNm1vRGNCTEE5dU5MaVpYbWtPOGgwN21GendJREFRQUJBb0lCQURCOTFMcHdrMjE3cU5hdgpUQjlPbmZyWGt0MWFLY1FuSDBMT29Vb1hHajRyK09LeUY5V2JENG5GdmViUEF4elNFalNoSXZDaytsVzJWT3NBClBPeDR0dGV2RTFkNFVwMkdZM1N4RDRxUmtJVlBpSHR6Z2NBNjRIQ1ZOaUNtZWVYNGJsTW5TSUwzRE5SMEVhZVkKeXZHVFgxTXZaUW54MU5aVUxYNTFoMUJSRkxka3J6OGVhMEprcWJxd21sdnpselV1YjVyell3TnQxNnA4dGN2cgpmS25pSklzalpzd084R3JnSmhlNEhSdG95cEtROGNzd1ZKdG92KzVKZS9wNzQzV28rcGVFVExGMjkyVERNNUdxCit5NHZGY2ZwS2xvR3dvS0FYdEw1UW56VkNWSzJNa3FFblE3NTRLZ3U5VkN2d01lRzdsYW1uZ1cxaXR3bUNzU2MKVnREUW1Ka0NnWUVBM1M0c3EzblhQVnJLcUxQWTA0ZTBkQzFtTHp3Zngwd1VGMmIwcU40aWd3TWpIRytJaG5jMgplTm9SV3k5clBwV2hLais0cG9GOEwvUHVtWmovaWRiMldLWmlrQ2xCaE1ydEZrcExrTGFmY0RVRnJjU0NRenhOClhwOTIyOGJDWnF3RjlkdFlTWmRjSjdITENSaUlsYTgrTndHQzB2NENTZEFEOWE0VnY3MitseTBDZ1lFQXcwVHoKeFpCSWdZLy9KWGRZOG5XdDNtdG9KWkQ2TWdobUp0ZSsvWEVCL2VMSHErRkEvTG04dGdRTHROQmJJVW9LbWpFdQp2Tno1VUxTbEJoRkdNcmlMdW1FUzFoWDBWTzBoZDQ2S01hN3U4Nzh6ZVFrdG5wRDA1d1NWTDBMcFc4ZURNbEN0CmpydGI0WVZXUzBLblRhS1ZXeVluWWxCbi9iOUVCMi9tc2lGbmJtc0NnWUJwQkR5SGFvRnRDMGZBRkN4Mk95L08KSGFRdjl6OHJkSTd4a1p2RzlqbXl0UEdkMWNNZi9VaHExemQ0Y1NwZGU5UWE2RWgzSG5IbG5zK0NOR2ZZZmExWAo2Q0JTVEpSa1JhbU9kTll1THRmREFobmhLTFdrME9QM2NvV1AwbTZKSzFKbEtyRmZ0N00wMGJFU2I0aWljYU43Cm9JY0tRVHE2Nno2R0R4TWFpREFQUFFLQmdDN2JKdHVyYVpxZFlRNHVlMHVDN1h2SHJqQUZmK1B0bkFXS0U2eGgKSjZjeWVkTkdzLzl3MmxXYTF1eEdhdmVyK3F0UlRmUEgycE9CSlhBMVNQRDIwNkNmbHBPRXBTS1QzRW9DRENzcgozTzdrWEllWXFqZTRkT3ZTYjdIdGptMlZqR2ZRY0RVbHhFQnpiR2VXME9xU0x1QzJZUkQ0Vmx2UFA1WEJSa3hNCk03T05Bb0dCQUlKblZQRGlqTkwyWlFNejhhMEFEMUpyWVd4OEFGbTdDVE9tUGhPeDhTUzlaMkpMTGRoTXlKV00Kc0lQRGR3WWxxcDRxWHJwMU5rMndtdTI5OGVMWEVQMEVtMkRoNSt6SlNWN3hUVHdIK01IeFF5emh6QXVDNHhWbgpuSWFrckZYaWFHVnJYZWJMbDdiRmt0N0htekZ5clB0c20vNDBzRjQza1lFL3NZQUJjZ2xXCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+
+使用上述值参照附录 ver 1.0 的例子生成新的config文件
+nano config
+
+config ver 1.0
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1ERXlNekF6TlRBd09Gb1hEVE14TURFeU1UQXpOVEF3T0Zvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTmVLCkRWa3ltNDk1R1R3UWxHbG1GYmVCUjJMY0EybFZNcGs2L3ZQM21XWXBLOTR2ODJHUFNOU2V0dENJaGpyVWU2Q3IKQndvSDhJNWFyMEV4VzNEVHpKWERaUXlRMktod2s3ZHo3RjlqNVFjcjNOMGlxUDY4dGk0Rm5say9BOStxZDlFdwpHMlZWaXF6TU9NMzBacEVxejkwVU5qZmYrdlRDcUt5MlI3MDZKWFF4d1JSSENNbEtvbVZFeFNIakdXSU5nUm9nCk5PaTd2UzBBb0VMMXZaamxvWVdSWXJsQVJvekp5SUJSaVRuWUwxU1JpWmhzYzFLQ2JMTy9qbDcyOGQ2UGpNK0wKNXlhMmZ6TDlwRlQ0VlZoWGl1a2tZcUI1TndXMnIyemdySDUrbGFhaUFBbW52alRSOWhSclJkNHE1eWJRWGF1YwpBZUtJVXVRVDR0M0ZONWZydDIwQ0F3RUFBYU5DTUVBd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZCb2hxQlBCZ1VWNUVMbDluS0YrQUJJOTVMQlVNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFBQkljM1NGSlJwQ0dGWGs0L0JHYzBiNE4rTURLd3hWdnpnNWhMZy9IYUtoeGxQZmJhVgp0ZTlWSit5ekJTaVcwTEppRlJTRzhmWXc5RHk3TWdMdC9lTWk0bng1Qk1lKzhvcGZnQkZoaDFFSXljM2lPQ05nCkdaMy9LbEp4TngxcStUMHR0U1BpN0hPTnd2WDR6VEdGSFBQYjhKMW5IdFBESlpSdmloM3BMUlFiNTVPRTBjWmYKNGc0bFBZV0RBVHhwTTR0OGlKM2d6TDl4MUZTQlE1VUZhWmMzb2VPUzVkZm1pQlZQUUVJSUFCWkhjcVlmd3hyNwoyNXNSdC9sT3lRb3lXU0pCU29Ca1hOdTc1emY1Q3U4U1JMTEJIajNiVS9BQlhKRncrL2lVYS8vYWN6Yy80TE8zClNGc1pTd2t0aUxFQk9ZT1hGdVl1NDA1YnVoaUszdWd6U09WUQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+    server: https://192.168.0.7:6443
+  name: kubernetes
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lJUG1PaTB4WUlYRk13RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TVRBeE1qTXdNelV3TURoYUZ3MHlNakF4TWpNd016VXdNVEJhTURReApGekFWQmdOVkJBb1REbk41YzNSbGJUcHRZWE4wWlhKek1Sa3dGd1lEVlFRREV4QnJkV0psY201bGRHVnpMV0ZrCmJXbHVNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQTJFOTlTUnBzVjhUbXF5T0MKUWsrM2FJbS9tOVEvamx4YkVET005T2VDS3BidnBSMUVBYXArVHprN2xNb3FqSnFaQXZUYlFLbjZZV2VLN0pHOApMZ2x3WS9TTzVtZEV6VHhMbDN0K2t1UzNNZ2RQaVordC83bkJ2N3VjbDdsQUlzRmI1NGhKaWRxTkFTa08wK0llCjF3ZHBnOGlJaW8rQ2VaeU16UzNjQ2swMTZuc3NCdTBTSHFFY1BMS1J1RTFvSTg0TDFCWmVjelNZNTlTRVk2d3kKYWdONE96RDl4OVJZdTdFSS9YMzFZNWZWdUZFZTh5SWNJdXY1aWNyb0pjWkgxc3hTTExMUHprdWd0NWh3R09CLwpRUytHL09YcFFSQjYycUFXc09USzhRV1pBenNMU0tkSVFVb2JNYkRVTDQwc1ZDckRVZmxqOEVVQ1FNaks2ZnVzCnV0VzJMd0lEQVFBQm8wZ3dSakFPQmdOVkhROEJBZjhFQkFNQ0JhQXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUgKQXdJd0h3WURWUjBqQkJnd0ZvQVVHaUdvRThHQlJYa1F1WDJjb1g0QUVqM2tzRlF3RFFZSktvWklodmNOQVFFTApCUUFEZ2dFQkFKYzZFNDJoWUFUbW5JaUVla09EYUc5SkpBOEdaelcvL1M0K2hrOXNWbVovdnVaTHNwNk1uY24yCm9kckE4bUZGdTIyR0lwdVJJdFAxNWEzbTJXWlNsY3NFT2I0d29rSWl4YXJnYzZDeWRDNXFWcDhVYWtjY3M0dHQKd0ZSN3BBVlBVV2FLTStVbkdsWHpVcWJROExuLzZraGpHOGhCN3diUkFSQU51bFB5cERyS283MVB1Y3pNUzdKcgpvSjVhMXoxaXRiR0ljYndDM2tpUWZsWGcrcXFGak80RTBtNDVmQ2V1Skk2M05ZT1NrNkxRc0gybWtUbkVaRm0wCjZPaFhCRzF4RDVyQXNPY3lpbGY4VTVZeVJSQXFQYVpPK0V4STNVZ01LL3Jpa1loNkZZckV4ckJ0QUVmd3c0NGkKNHE1ZXNpUlZ3S0szNGMrblhJbHFobXZyNzhmS3g0ST0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcFFJQkFBS0NBUUVBMkU5OVNScHNWOFRtcXlPQ1FrKzNhSW0vbTlRL2pseGJFRE9NOU9lQ0twYnZwUjFFCkFhcCtUems3bE1vcWpKcVpBdlRiUUtuNllXZUs3Skc4TGdsd1kvU081bWRFelR4TGwzdCtrdVMzTWdkUGlaK3QKLzduQnY3dWNsN2xBSXNGYjU0aEppZHFOQVNrTzArSWUxd2RwZzhpSWlvK0NlWnlNelMzY0NrMDE2bnNzQnUwUwpIcUVjUExLUnVFMW9JODRMMUJaZWN6U1k1OVNFWTZ3eWFnTjRPekQ5eDlSWXU3RUkvWDMxWTVmVnVGRWU4eUljCkl1djVpY3JvSmNaSDFzeFNMTExQemt1Z3Q1aHdHT0IvUVMrRy9PWHBRUkI2MnFBV3NPVEs4UVdaQXpzTFNLZEkKUVVvYk1iRFVMNDBzVkNyRFVmbGo4RVVDUU1qSzZmdXN1dFcyTHdJREFRQUJBb0lCQVFDVTlrakZLeGtwYUVPaAozNVk0ckVVV0RLYVRYWnRYSW1yandWeDAyMmxjZ3cwTm5CWFZQK0EwRnFuZFVVdjBBQk1YWWlBTGJBTXRTT3oyCjlYV3VEbm9EbThzOUNDanRYWFNCSVY2Tk1reW1lenBmQUVRSE01a2x2TUdlQ3NrTUpqUndRZjdDbkdzMlBWd2sKdGplZXhVLzRuUVRLeHdHSFZqUHdxSUE3NStnVlRQRHp0QzVEUFp2THpjemduWGNtN3VIRTJYVEVuVGw3bzBPOQpHYzgvc2cxd3NzOFg4TWZUS2VnejVDbzhjZWlMWnZJNG92VmdNdHFtMmNkQjBNcGIzQVF4M29FdnF3MlVSNjc5Cjh3eW1Zang1RjFBOXE2V0xQei95SDQ3UGEyNGxtdi9XcGpWaGwwRStWWnZPTlgyN2hVOGNsNGlPT3BER3VlY3QKZVRpQW1XUGhBb0dCQU43MVFWanhXaFBob0FxckRwT0UydjZDV0VTazN4ay9ibE12bG16aFlaYmUvYVlyKzlVTwpLTHQ3amNkOW04SFVvU2ZXU3VZMFJFV0x1QWRNdG9mdEtaekxvVmdVUERNQUIzbUFZbGRGZmNqeVhDMm1SVUw2Cm1SS0dVTnU5VTRSZmVKcmdCOFk3cHg0ajdidWt5V3JJZ1g4Z0xRWnNCL2tOMzUydDFlZ3o0MjJUQW9HQkFQaGUKQ1JtaGp6QnFvTUxTMUtXNGNMand3R0lhcGdLUmhrRmJIOEMzRWNEYW1YMUJ4V2xiNHppZm5RTVVyWVhUZllTMwprcTJ3aUFOWlU1Tk1sL2t5M0xsV3pDaDhCdlZnM1VzT3ZIMm1Fb1IxMWVScXBmMTFDMVR1YnFEYzFGVUdjejhNCi9rZVpWcVdJaEI4ckUrcW0rL1B1eUYyVEdzM0tyMkNFQUZlaDNoWjFBb0dCQUp3dnh1VmR2YkpydmtkNjZTMGkKUnA5QUJFR2lGYitFRmU4a1NRWmhKSklpQ0NKZWNYNGcreHZMUTlqWi8wRGJpVUYwOXVjbytpS1Y3QWNCRUdWTQpHSGlFbGJRMENLL1pkMk1BTXVQY0JHKytpQ0JhZCs2aHlwV1ZqaE5CSDc1OWV1bFR3MTUwNzI5SDBBUkJQZkFXCklkRkNZd2c2cWFNb3V0dWtxVktPOXVVTkFvR0JBTnFXY0czbGVjOUQyTzcrZlBiSlNEUU1kMVVnWFFFZnNNZ3UKZWRpemhtVjBQdWcxalpmM3JoZzBxZ3gvRTJVWHlIMll6dmdjeU9naG91T2Q0cGNKQTZmKzB6bkNScUdKT2RvSQpReTVXamkrVVFjYUJja3VLeW9sYU8zVktSWG43Ymt5TWsvTFI2cWRQYWZEQWlndllJU0VFQThZUFpPUy93UEF4CjNOZERkK0hOQW9HQUw4L0lZczlWbk0vaWFxdVBJcEp2TzZBa1p6ZWRQS2VMVlFETWdLU2ZVU3d1a2g1M0JWMjAKME5jaHB0eGRKVStyd0dmbjBGQ2pWNStzYXp1T1VyYUI2RE9rU24zZENONkxwQ2lMTEtVcGtUMm9Rb2hDWXB0cgpLK1BUOE9td2dpL1Vvb1lDU1FSc21tR3BIeHVLWkQ4cDAwQXlYMURWNEtzNTFBSEQyUmhrbWk0PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+- name: train
+  user: 
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUNzRENDQVpnQ0NRRElxV3luMnR0am5qQU5CZ2txaGtpRzl3MEJBUXNGQURBVk1STXdFUVlEVlFRREV3cHIKZFdKbGNtNWxkR1Z6TUI0WERUSXhNREl3TkRBek1qQXhObG9YRFRJeU1EWXhPVEF6TWpBeE5sb3dIekVPTUF3RwpBMVVFQXd3RmRISmhhVzR4RFRBTEJnTlZCQW9NQkdSbWNuUXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCCkR3QXdnZ0VLQW9JQkFRQ290YjdvQVBNVGtqamR5NDF4TkJUeTZCQkVQTFdZK0hvRE5MRFlzRXd0WGdTdkl6ZzQKQ0FHeVR1YVVmL0FSNXFDWG1xcEJoL3ZudGF0MW5NTkdVeUxQWXZBQy9EeVZWL1M4R0s3ZjVyV3Z5bnFMRlMwbwpLdlJSa0dnRW9QOXk2UVhhRFBYbjRvaVRWSzYyUjJJcTVTdmovSlFMSVBDYXViam5ncmpGY2VNUEpzQWdQNm5mCkhCZDJhMWNMUGpYdUJiQTlPSlJjUW10K0pvRDBYZWNuUkI3TE1xa2EzdmJoK0pCOEdtL3RKNlBOZ2Y3b2YvMlcKZngyU2d2NG9hbUFMb2xCYTdiZUtiWXFlc1NBZUMwMlFPRDNBYmhOZk9nL0gvM0NDVzU3VlVKSXBZWFd6V240NgpST1RxbzQ3czZwL3FhZ053RXNEMjQwdUpsZWFRN3lIVHVZWFBBZ01CQUFFd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBQ2h3blRNcnNBUGdlQVl0SXE1V3BOUk5rdk5idlczZ1VWb1lHMnFMM1FHWVdOWjQyZ0lRUFJBVGE4MTEKUEtYclV4TkZSTVJxOXQzbkxwOEpiUERBSmNzeVU5cG42bThZS2RDcis1cW5OUS9BOUh3WGhnMVN0OFVRYk1YTQpHWFBtMWFXdVlwS0xKbCtmK3JGRWRpTWRIclBEV205Sm1HV3ltYkZ2NFJIdE9UaEo1bWczenNweUE2STdXV3U5CmQ0ejdvOXArNi9kWkcvL1crd0ZzUzVoZXBSUWtJZjBLRXA3dnVvWWdvR1FCTnQrOENIbWVtNmkwMmdScGVnSFMKbWJHbzZyYTNsQ0ltclgvZk1YTWQycys0ZTYwanA2OUQ0UnFodGhoMEo3MENWcEZvVEdPNDVaQnVYYWMwYjkxbgpTM2tkNGlXakcxd1lSWHhMSjhiWm85aS9kUzQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBcUxXKzZBRHpFNUk0M2N1TmNUUVU4dWdRUkR5MW1QaDZBelN3MkxCTUxWNEVyeU00Ck9BZ0JzazdtbEgvd0VlYWdsNXFxUVlmNzU3V3JkWnpEUmxNaXoyTHdBdnc4bFZmMHZCaXUzK2ExcjhwNml4VXQKS0NyMFVaQm9CS0QvY3VrRjJnejE1K0tJazFTdXRrZGlLdVVyNC95VUN5RHdtcm00NTRLNHhYSGpEeWJBSUQrcAozeHdYZG10WEN6NDE3Z1d3UFRpVVhFSnJmaWFBOUYzbkowUWV5ektwR3Q3MjRmaVFmQnB2N1NlanpZSCs2SC85CmxuOGRrb0wrS0dwZ0M2SlFXdTIzaW0yS25yRWdIZ3ROa0RnOXdHNFRYem9QeC85d2dsdWUxVkNTS1dGMXMxcCsKT2tUazZxT083T3FmNm1vRGNCTEE5dU5MaVpYbWtPOGgwN21GendJREFRQUJBb0lCQURCOTFMcHdrMjE3cU5hdgpUQjlPbmZyWGt0MWFLY1FuSDBMT29Vb1hHajRyK09LeUY5V2JENG5GdmViUEF4elNFalNoSXZDaytsVzJWT3NBClBPeDR0dGV2RTFkNFVwMkdZM1N4RDRxUmtJVlBpSHR6Z2NBNjRIQ1ZOaUNtZWVYNGJsTW5TSUwzRE5SMEVhZVkKeXZHVFgxTXZaUW54MU5aVUxYNTFoMUJSRkxka3J6OGVhMEprcWJxd21sdnpselV1YjVyell3TnQxNnA4dGN2cgpmS25pSklzalpzd084R3JnSmhlNEhSdG95cEtROGNzd1ZKdG92KzVKZS9wNzQzV28rcGVFVExGMjkyVERNNUdxCit5NHZGY2ZwS2xvR3dvS0FYdEw1UW56VkNWSzJNa3FFblE3NTRLZ3U5VkN2d01lRzdsYW1uZ1cxaXR3bUNzU2MKVnREUW1Ka0NnWUVBM1M0c3EzblhQVnJLcUxQWTA0ZTBkQzFtTHp3Zngwd1VGMmIwcU40aWd3TWpIRytJaG5jMgplTm9SV3k5clBwV2hLais0cG9GOEwvUHVtWmovaWRiMldLWmlrQ2xCaE1ydEZrcExrTGFmY0RVRnJjU0NRenhOClhwOTIyOGJDWnF3RjlkdFlTWmRjSjdITENSaUlsYTgrTndHQzB2NENTZEFEOWE0VnY3MitseTBDZ1lFQXcwVHoKeFpCSWdZLy9KWGRZOG5XdDNtdG9KWkQ2TWdobUp0ZSsvWEVCL2VMSHErRkEvTG04dGdRTHROQmJJVW9LbWpFdQp2Tno1VUxTbEJoRkdNcmlMdW1FUzFoWDBWTzBoZDQ2S01hN3U4Nzh6ZVFrdG5wRDA1d1NWTDBMcFc4ZURNbEN0CmpydGI0WVZXUzBLblRhS1ZXeVluWWxCbi9iOUVCMi9tc2lGbmJtc0NnWUJwQkR5SGFvRnRDMGZBRkN4Mk95L08KSGFRdjl6OHJkSTd4a1p2RzlqbXl0UEdkMWNNZi9VaHExemQ0Y1NwZGU5UWE2RWgzSG5IbG5zK0NOR2ZZZmExWAo2Q0JTVEpSa1JhbU9kTll1THRmREFobmhLTFdrME9QM2NvV1AwbTZKSzFKbEtyRmZ0N00wMGJFU2I0aWljYU43Cm9JY0tRVHE2Nno2R0R4TWFpREFQUFFLQmdDN2JKdHVyYVpxZFlRNHVlMHVDN1h2SHJqQUZmK1B0bkFXS0U2eGgKSjZjeWVkTkdzLzl3MmxXYTF1eEdhdmVyK3F0UlRmUEgycE9CSlhBMVNQRDIwNkNmbHBPRXBTS1QzRW9DRENzcgozTzdrWEllWXFqZTRkT3ZTYjdIdGptMlZqR2ZRY0RVbHhFQnpiR2VXME9xU0x1QzJZUkQ0Vmx2UFA1WEJSa3hNCk03T05Bb0dCQUlKblZQRGlqTkwyWlFNejhhMEFEMUpyWVd4OEFGbTdDVE9tUGhPeDhTUzlaMkpMTGRoTXlKV00Kc0lQRGR3WWxxcDRxWHJwMU5rMndtdTI5OGVMWEVQMEVtMkRoNSt6SlNWN3hUVHdIK01IeFF5emh6QXVDNHhWbgpuSWFrckZYaWFHVnJYZWJMbDdiRmt0N0htekZ5clB0c20vNDBzRjQza1lFL3NZQUJjZ2xXCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+contexts:
+- name: kubernetes-admin@kubernetes
+  context:
+    cluster: kubernetes
+    user: kubernetes-admin
+- name: train@kubernetes
+  context:
+    cluster: kubernetes
+    user: train
+current-context: kubernetes-admin@kubernetes
+
+lab 2 创建SA
+kubectl create sa admin -n kube-system
+
+查看SA信息
+kubectl describe sa admin -n kube-system
+  *重点关注Tokens
+
+查看Token
+kubectl get secret -n kube-system
+
+kubectl get secret -n kube-system | grep admin-token-ssjq7
+
+查看Token对应的secret
+kubectl describe secret -n kube-system admin-token-ssjq7
+  *这里显示的是base64转码过后的Token，复制
+
+备份
+cp config config.20210204a
+
+使用复制的转码token更新配置文件
+
+设置上下文
+kubectl config set-context admin@kubernetes --cluster=kubernetes --user=admin
+
+查看所有上下文
+kubectl config get-contexts
+  *确认admin已经出现
+
+切换上下文
+kubectl config use-context admin@kubernetes
+
+尝试执行一些操作
+
+config v 2.0
+
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1ERXlNekF6TlRBd09Gb1hEVE14TURFeU1UQXpOVEF3T0Zvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTmVLCkRWa3ltNDk1R1R3UWxHbG1GYmVCUjJMY0EybFZNcGs2L3ZQM21XWXBLOTR2ODJHUFNOU2V0dENJaGpyVWU2Q3IKQndvSDhJNWFyMEV4VzNEVHpKWERaUXlRMktod2s3ZHo3RjlqNVFjcjNOMGlxUDY4dGk0Rm5say9BOStxZDlFdwpHMlZWaXF6TU9NMzBacEVxejkwVU5qZmYrdlRDcUt5MlI3MDZKWFF4d1JSSENNbEtvbVZFeFNIakdXSU5nUm9nCk5PaTd2UzBBb0VMMXZaamxvWVdSWXJsQVJvekp5SUJSaVRuWUwxU1JpWmhzYzFLQ2JMTy9qbDcyOGQ2UGpNK0wKNXlhMmZ6TDlwRlQ0VlZoWGl1a2tZcUI1TndXMnIyemdySDUrbGFhaUFBbW52alRSOWhSclJkNHE1eWJRWGF1YwpBZUtJVXVRVDR0M0ZONWZydDIwQ0F3RUFBYU5DTUVBd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZCb2hxQlBCZ1VWNUVMbDluS0YrQUJJOTVMQlVNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFBQkljM1NGSlJwQ0dGWGs0L0JHYzBiNE4rTURLd3hWdnpnNWhMZy9IYUtoeGxQZmJhVgp0ZTlWSit5ekJTaVcwTEppRlJTRzhmWXc5RHk3TWdMdC9lTWk0bng1Qk1lKzhvcGZnQkZoaDFFSXljM2lPQ05nCkdaMy9LbEp4TngxcStUMHR0U1BpN0hPTnd2WDR6VEdGSFBQYjhKMW5IdFBESlpSdmloM3BMUlFiNTVPRTBjWmYKNGc0bFBZV0RBVHhwTTR0OGlKM2d6TDl4MUZTQlE1VUZhWmMzb2VPUzVkZm1pQlZQUUVJSUFCWkhjcVlmd3hyNwoyNXNSdC9sT3lRb3lXU0pCU29Ca1hOdTc1emY1Q3U4U1JMTEJIajNiVS9BQlhKRncrL2lVYS8vYWN6Yy80TE8zClNGc1pTd2t0aUxFQk9ZT1hGdVl1NDA1YnVoaUszdWd6U09WUQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+    server: https://192.168.0.7:6443
+  name: kubernetes
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lJUG1PaTB4WUlYRk13RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TVRBeE1qTXdNelV3TURoYUZ3MHlNakF4TWpNd016VXdNVEJhTURReApGekFWQmdOVkJBb1REbk41YzNSbGJUcHRZWE4wWlhKek1Sa3dGd1lEVlFRREV4QnJkV0psY201bGRHVnpMV0ZrCmJXbHVNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQTJFOTlTUnBzVjhUbXF5T0MKUWsrM2FJbS9tOVEvamx4YkVET005T2VDS3BidnBSMUVBYXArVHprN2xNb3FqSnFaQXZUYlFLbjZZV2VLN0pHOApMZ2x3WS9TTzVtZEV6VHhMbDN0K2t1UzNNZ2RQaVordC83bkJ2N3VjbDdsQUlzRmI1NGhKaWRxTkFTa08wK0llCjF3ZHBnOGlJaW8rQ2VaeU16UzNjQ2swMTZuc3NCdTBTSHFFY1BMS1J1RTFvSTg0TDFCWmVjelNZNTlTRVk2d3kKYWdONE96RDl4OVJZdTdFSS9YMzFZNWZWdUZFZTh5SWNJdXY1aWNyb0pjWkgxc3hTTExMUHprdWd0NWh3R09CLwpRUytHL09YcFFSQjYycUFXc09USzhRV1pBenNMU0tkSVFVb2JNYkRVTDQwc1ZDckRVZmxqOEVVQ1FNaks2ZnVzCnV0VzJMd0lEQVFBQm8wZ3dSakFPQmdOVkhROEJBZjhFQkFNQ0JhQXdFd1lEVlIwbEJBd3dDZ1lJS3dZQkJRVUgKQXdJd0h3WURWUjBqQkJnd0ZvQVVHaUdvRThHQlJYa1F1WDJjb1g0QUVqM2tzRlF3RFFZSktvWklodmNOQVFFTApCUUFEZ2dFQkFKYzZFNDJoWUFUbW5JaUVla09EYUc5SkpBOEdaelcvL1M0K2hrOXNWbVovdnVaTHNwNk1uY24yCm9kckE4bUZGdTIyR0lwdVJJdFAxNWEzbTJXWlNsY3NFT2I0d29rSWl4YXJnYzZDeWRDNXFWcDhVYWtjY3M0dHQKd0ZSN3BBVlBVV2FLTStVbkdsWHpVcWJROExuLzZraGpHOGhCN3diUkFSQU51bFB5cERyS283MVB1Y3pNUzdKcgpvSjVhMXoxaXRiR0ljYndDM2tpUWZsWGcrcXFGak80RTBtNDVmQ2V1Skk2M05ZT1NrNkxRc0gybWtUbkVaRm0wCjZPaFhCRzF4RDVyQXNPY3lpbGY4VTVZeVJSQXFQYVpPK0V4STNVZ01LL3Jpa1loNkZZckV4ckJ0QUVmd3c0NGkKNHE1ZXNpUlZ3S0szNGMrblhJbHFobXZyNzhmS3g0ST0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcFFJQkFBS0NBUUVBMkU5OVNScHNWOFRtcXlPQ1FrKzNhSW0vbTlRL2pseGJFRE9NOU9lQ0twYnZwUjFFCkFhcCtUems3bE1vcWpKcVpBdlRiUUtuNllXZUs3Skc4TGdsd1kvU081bWRFelR4TGwzdCtrdVMzTWdkUGlaK3QKLzduQnY3dWNsN2xBSXNGYjU0aEppZHFOQVNrTzArSWUxd2RwZzhpSWlvK0NlWnlNelMzY0NrMDE2bnNzQnUwUwpIcUVjUExLUnVFMW9JODRMMUJaZWN6U1k1OVNFWTZ3eWFnTjRPekQ5eDlSWXU3RUkvWDMxWTVmVnVGRWU4eUljCkl1djVpY3JvSmNaSDFzeFNMTExQemt1Z3Q1aHdHT0IvUVMrRy9PWHBRUkI2MnFBV3NPVEs4UVdaQXpzTFNLZEkKUVVvYk1iRFVMNDBzVkNyRFVmbGo4RVVDUU1qSzZmdXN1dFcyTHdJREFRQUJBb0lCQVFDVTlrakZLeGtwYUVPaAozNVk0ckVVV0RLYVRYWnRYSW1yandWeDAyMmxjZ3cwTm5CWFZQK0EwRnFuZFVVdjBBQk1YWWlBTGJBTXRTT3oyCjlYV3VEbm9EbThzOUNDanRYWFNCSVY2Tk1reW1lenBmQUVRSE01a2x2TUdlQ3NrTUpqUndRZjdDbkdzMlBWd2sKdGplZXhVLzRuUVRLeHdHSFZqUHdxSUE3NStnVlRQRHp0QzVEUFp2THpjemduWGNtN3VIRTJYVEVuVGw3bzBPOQpHYzgvc2cxd3NzOFg4TWZUS2VnejVDbzhjZWlMWnZJNG92VmdNdHFtMmNkQjBNcGIzQVF4M29FdnF3MlVSNjc5Cjh3eW1Zang1RjFBOXE2V0xQei95SDQ3UGEyNGxtdi9XcGpWaGwwRStWWnZPTlgyN2hVOGNsNGlPT3BER3VlY3QKZVRpQW1XUGhBb0dCQU43MVFWanhXaFBob0FxckRwT0UydjZDV0VTazN4ay9ibE12bG16aFlaYmUvYVlyKzlVTwpLTHQ3amNkOW04SFVvU2ZXU3VZMFJFV0x1QWRNdG9mdEtaekxvVmdVUERNQUIzbUFZbGRGZmNqeVhDMm1SVUw2Cm1SS0dVTnU5VTRSZmVKcmdCOFk3cHg0ajdidWt5V3JJZ1g4Z0xRWnNCL2tOMzUydDFlZ3o0MjJUQW9HQkFQaGUKQ1JtaGp6QnFvTUxTMUtXNGNMand3R0lhcGdLUmhrRmJIOEMzRWNEYW1YMUJ4V2xiNHppZm5RTVVyWVhUZllTMwprcTJ3aUFOWlU1Tk1sL2t5M0xsV3pDaDhCdlZnM1VzT3ZIMm1Fb1IxMWVScXBmMTFDMVR1YnFEYzFGVUdjejhNCi9rZVpWcVdJaEI4ckUrcW0rL1B1eUYyVEdzM0tyMkNFQUZlaDNoWjFBb0dCQUp3dnh1VmR2YkpydmtkNjZTMGkKUnA5QUJFR2lGYitFRmU4a1NRWmhKSklpQ0NKZWNYNGcreHZMUTlqWi8wRGJpVUYwOXVjbytpS1Y3QWNCRUdWTQpHSGlFbGJRMENLL1pkMk1BTXVQY0JHKytpQ0JhZCs2aHlwV1ZqaE5CSDc1OWV1bFR3MTUwNzI5SDBBUkJQZkFXCklkRkNZd2c2cWFNb3V0dWtxVktPOXVVTkFvR0JBTnFXY0czbGVjOUQyTzcrZlBiSlNEUU1kMVVnWFFFZnNNZ3UKZWRpemhtVjBQdWcxalpmM3JoZzBxZ3gvRTJVWHlIMll6dmdjeU9naG91T2Q0cGNKQTZmKzB6bkNScUdKT2RvSQpReTVXamkrVVFjYUJja3VLeW9sYU8zVktSWG43Ymt5TWsvTFI2cWRQYWZEQWlndllJU0VFQThZUFpPUy93UEF4CjNOZERkK0hOQW9HQUw4L0lZczlWbk0vaWFxdVBJcEp2TzZBa1p6ZWRQS2VMVlFETWdLU2ZVU3d1a2g1M0JWMjAKME5jaHB0eGRKVStyd0dmbjBGQ2pWNStzYXp1T1VyYUI2RE9rU24zZENONkxwQ2lMTEtVcGtUMm9Rb2hDWXB0cgpLK1BUOE9td2dpL1Vvb1lDU1FSc21tR3BIeHVLWkQ4cDAwQXlYMURWNEtzNTFBSEQyUmhrbWk0PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+users:
+- name: admin
+  token: eyJhbGciOiJSUzI1NiIsImtpZCI6IlVraFVTclVucXlYdV92MEliUC15U21qOXhqNVhlMjRZZHpuUnBzSmpjNVUifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi10b2tlbi1zc2pxNyIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJhZG1pbiIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImQyZGQ3NGNmLWUzYzAtNDNhZi1hYjBjLTJkNzgyNzc3MzgyNiIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDprdWJlLXN5c3RlbTphZG1pbiJ9.WdX69AcgA5VY57vh8xOIFSDaMg9Gejg5boPQSIs8w6Bs4kbkL-cTEzA2CipWg9DbXlInic9EW2sADaCyp65LRA_HfVWZC2Y56XZ1_m6evM_UYn_-xqlfkBiJtvONFpr-i5sEtXitXVzs-XiTZOyMgb8Kzmt_p_-VyRw6OYppvCTc8tCovOl927ELwolQKMiPg5hNbMUCIpeJ8HVLowcOIWy2U6bF4oBSyRimXRYJS_bTGImZnfAtG6PRNQBoSC2bbIHjyZjNwtLiVqituc3K82dm6X_MlrZ9ynvoUmoKh_ZMeOMAF7jYzEKjKIWNJLg2k7Au6oTVKs6tUbpPZ9jUog
+- name: train
+  user: 
+    client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUNzRENDQVpnQ0NRRElxV3luMnR0am5qQU5CZ2txaGtpRzl3MEJBUXNGQURBVk1STXdFUVlEVlFRREV3cHIKZFdKbGNtNWxkR1Z6TUI0WERUSXhNREl3TkRBek1qQXhObG9YRFRJeU1EWXhPVEF6TWpBeE5sb3dIekVPTUF3RwpBMVVFQXd3RmRISmhhVzR4RFRBTEJnTlZCQW9NQkdSbWNuUXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCCkR3QXdnZ0VLQW9JQkFRQ290YjdvQVBNVGtqamR5NDF4TkJUeTZCQkVQTFdZK0hvRE5MRFlzRXd0WGdTdkl6ZzQKQ0FHeVR1YVVmL0FSNXFDWG1xcEJoL3ZudGF0MW5NTkdVeUxQWXZBQy9EeVZWL1M4R0s3ZjVyV3Z5bnFMRlMwbwpLdlJSa0dnRW9QOXk2UVhhRFBYbjRvaVRWSzYyUjJJcTVTdmovSlFMSVBDYXViam5ncmpGY2VNUEpzQWdQNm5mCkhCZDJhMWNMUGpYdUJiQTlPSlJjUW10K0pvRDBYZWNuUkI3TE1xa2EzdmJoK0pCOEdtL3RKNlBOZ2Y3b2YvMlcKZngyU2d2NG9hbUFMb2xCYTdiZUtiWXFlc1NBZUMwMlFPRDNBYmhOZk9nL0gvM0NDVzU3VlVKSXBZWFd6V240NgpST1RxbzQ3czZwL3FhZ053RXNEMjQwdUpsZWFRN3lIVHVZWFBBZ01CQUFFd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBQ2h3blRNcnNBUGdlQVl0SXE1V3BOUk5rdk5idlczZ1VWb1lHMnFMM1FHWVdOWjQyZ0lRUFJBVGE4MTEKUEtYclV4TkZSTVJxOXQzbkxwOEpiUERBSmNzeVU5cG42bThZS2RDcis1cW5OUS9BOUh3WGhnMVN0OFVRYk1YTQpHWFBtMWFXdVlwS0xKbCtmK3JGRWRpTWRIclBEV205Sm1HV3ltYkZ2NFJIdE9UaEo1bWczenNweUE2STdXV3U5CmQ0ejdvOXArNi9kWkcvL1crd0ZzUzVoZXBSUWtJZjBLRXA3dnVvWWdvR1FCTnQrOENIbWVtNmkwMmdScGVnSFMKbWJHbzZyYTNsQ0ltclgvZk1YTWQycys0ZTYwanA2OUQ0UnFodGhoMEo3MENWcEZvVEdPNDVaQnVYYWMwYjkxbgpTM2tkNGlXakcxd1lSWHhMSjhiWm85aS9kUzQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    client-key-data: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBcUxXKzZBRHpFNUk0M2N1TmNUUVU4dWdRUkR5MW1QaDZBelN3MkxCTUxWNEVyeU00Ck9BZ0JzazdtbEgvd0VlYWdsNXFxUVlmNzU3V3JkWnpEUmxNaXoyTHdBdnc4bFZmMHZCaXUzK2ExcjhwNml4VXQKS0NyMFVaQm9CS0QvY3VrRjJnejE1K0tJazFTdXRrZGlLdVVyNC95VUN5RHdtcm00NTRLNHhYSGpEeWJBSUQrcAozeHdYZG10WEN6NDE3Z1d3UFRpVVhFSnJmaWFBOUYzbkowUWV5ektwR3Q3MjRmaVFmQnB2N1NlanpZSCs2SC85CmxuOGRrb0wrS0dwZ0M2SlFXdTIzaW0yS25yRWdIZ3ROa0RnOXdHNFRYem9QeC85d2dsdWUxVkNTS1dGMXMxcCsKT2tUazZxT083T3FmNm1vRGNCTEE5dU5MaVpYbWtPOGgwN21GendJREFRQUJBb0lCQURCOTFMcHdrMjE3cU5hdgpUQjlPbmZyWGt0MWFLY1FuSDBMT29Vb1hHajRyK09LeUY5V2JENG5GdmViUEF4elNFalNoSXZDaytsVzJWT3NBClBPeDR0dGV2RTFkNFVwMkdZM1N4RDRxUmtJVlBpSHR6Z2NBNjRIQ1ZOaUNtZWVYNGJsTW5TSUwzRE5SMEVhZVkKeXZHVFgxTXZaUW54MU5aVUxYNTFoMUJSRkxka3J6OGVhMEprcWJxd21sdnpselV1YjVyell3TnQxNnA4dGN2cgpmS25pSklzalpzd084R3JnSmhlNEhSdG95cEtROGNzd1ZKdG92KzVKZS9wNzQzV28rcGVFVExGMjkyVERNNUdxCit5NHZGY2ZwS2xvR3dvS0FYdEw1UW56VkNWSzJNa3FFblE3NTRLZ3U5VkN2d01lRzdsYW1uZ1cxaXR3bUNzU2MKVnREUW1Ka0NnWUVBM1M0c3EzblhQVnJLcUxQWTA0ZTBkQzFtTHp3Zngwd1VGMmIwcU40aWd3TWpIRytJaG5jMgplTm9SV3k5clBwV2hLais0cG9GOEwvUHVtWmovaWRiMldLWmlrQ2xCaE1ydEZrcExrTGFmY0RVRnJjU0NRenhOClhwOTIyOGJDWnF3RjlkdFlTWmRjSjdITENSaUlsYTgrTndHQzB2NENTZEFEOWE0VnY3MitseTBDZ1lFQXcwVHoKeFpCSWdZLy9KWGRZOG5XdDNtdG9KWkQ2TWdobUp0ZSsvWEVCL2VMSHErRkEvTG04dGdRTHROQmJJVW9LbWpFdQp2Tno1VUxTbEJoRkdNcmlMdW1FUzFoWDBWTzBoZDQ2S01hN3U4Nzh6ZVFrdG5wRDA1d1NWTDBMcFc4ZURNbEN0CmpydGI0WVZXUzBLblRhS1ZXeVluWWxCbi9iOUVCMi9tc2lGbmJtc0NnWUJwQkR5SGFvRnRDMGZBRkN4Mk95L08KSGFRdjl6OHJkSTd4a1p2RzlqbXl0UEdkMWNNZi9VaHExemQ0Y1NwZGU5UWE2RWgzSG5IbG5zK0NOR2ZZZmExWAo2Q0JTVEpSa1JhbU9kTll1THRmREFobmhLTFdrME9QM2NvV1AwbTZKSzFKbEtyRmZ0N00wMGJFU2I0aWljYU43Cm9JY0tRVHE2Nno2R0R4TWFpREFQUFFLQmdDN2JKdHVyYVpxZFlRNHVlMHVDN1h2SHJqQUZmK1B0bkFXS0U2eGgKSjZjeWVkTkdzLzl3MmxXYTF1eEdhdmVyK3F0UlRmUEgycE9CSlhBMVNQRDIwNkNmbHBPRXBTS1QzRW9DRENzcgozTzdrWEllWXFqZTRkT3ZTYjdIdGptMlZqR2ZRY0RVbHhFQnpiR2VXME9xU0x1QzJZUkQ0Vmx2UFA1WEJSa3hNCk03T05Bb0dCQUlKblZQRGlqTkwyWlFNejhhMEFEMUpyWVd4OEFGbTdDVE9tUGhPeDhTUzlaMkpMTGRoTXlKV00Kc0lQRGR3WWxxcDRxWHJwMU5rMndtdTI5OGVMWEVQMEVtMkRoNSt6SlNWN3hUVHdIK01IeFF5emh6QXVDNHhWbgpuSWFrckZYaWFHVnJYZWJMbDdiRmt0N0htekZ5clB0c20vNDBzRjQza1lFL3NZQUJjZ2xXCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+contexts:
+- name: kubernetes-admin@kubernetes
+  context:
+    cluster: kubernetes
+    user: kubernetes-admin
+- name: train@kubernetes
+  context:
+    cluster: kubernetes
+    user: admin
+- name: admin@kubernetes
+  context:
+    cluster: kubernetes
+    user: train
+current-context: kubernetes-admin@kubernetes
+
+
+
+
+
+role view.yaml
+apiVersion: v1
+kind: Pod
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: view
+  namespace: lab
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - endpoints
+  - persistentvolumeclaims
+  - persistentvolumeclaims/status
+  - pods
+  - replicationcontrollers
+  - replicationcontrollers/scale
+  - serviceaccounts
+  - services
+  - services/status
+  - bindings
+  - events
+  - limitranges
+  - namespaces/status
+  - pods/log
+  - pods/status
+  - replicationcontrollers/status
+  - resourcequotas
+  - resourcequotas/status
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+
+- apiGroups:
+  - apps 
+  resources:
+  - controllerrevisions
+  - daemonsets
+  - daemonsets/status
+  - deployments
+  - deployments/scale
+  - deployments/status
+  - replicasets
+  - replicasets/scale
+  - replicasets/status
+  - statefulsets
+  - statefulsets/scale
+  - statefulsets/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  - horizontalpodautoscalers/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - cronjobs/status
+  - jobs
+  - jobs/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  resources:
+  - daemonsets
+  - daemonsets/status
+  - deployments
+  - deployments/scale
+  - deployments/status
+  - ingresses
+  - ingresses/status
+  - networkpolicies
+  - replicasets
+  - replicasets/scale
+  - replicasets/status
+  - replicationcontrollers/scale
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  - poddisruptionbudgets/status
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  - ingresses/status
+  - networkpolicies
+  verbs:
+  - get
+  - list
+  - watch
+
+
+
+*基于以下资料重新创建SA并进行namespace级别的授权实验
+https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengaddingserviceaccttoken.htm
+
+
+网络安全模板
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-from-namespace
+  namespace: internal # 适用的命名空间
+spec:
+  podSelector: {} # 大括号为空，表示针对所有的pod
+  policyTypes:
+  - Ingress 
+  - Egress
+  ingress: # 入站方向
+  - from:
+    - podSelector: {}
+    ports:
+    - port: 8080
+      protocol: TCP
+    - port: 8080
+      protocol: UDP
+  egress: # 出站方向
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: UDP
+      port: 8080

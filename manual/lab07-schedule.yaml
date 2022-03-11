@@ -1,0 +1,214 @@
+Lab 1 DaemonSet
+
+使用以下范例，创建deamonset yaml
+nano katacoda-daemonsets.yaml
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+启用DaemonSet
+kubectl apply -f katacoda-daemonsets.yaml 
+
+观察pod
+kubectl get pods -o wide
+ *每个节点都有一个katacoda，master节点暂时还没有
+
+给k8s03打标签
+kubectl label node k8s03 proxy=enable
+
+使用以下范例，更新deamonset
+nano katacoda-daemonsets2.yaml
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      nodeSelector: # 根据标签匹配调度
+        proxy: enable
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+更新DaemonSet
+kubectl apply -f katacoda-daemonsets2.yaml
+
+观察pod
+kubectl get pods -o wide
+ *k8s02节点上的pod被终止了
+
+查看k8s03节点详情
+kubectl describe nodes k8s03
+  *特别留意labels字段
+
+删除k8s03的标签
+kubectl label node k8s03 proxy-
+
+再次查看k8s03节点详情
+kubectl describe nodes k8s03
+  *特别留意labels字段
+
+再次观察pod
+kubectl get pods -o wide
+ *k8s03节点上的pod也被终止了
+
+清理daemonset
+kubectl delete -f katacoda-daemonsets2.yaml 
+
+Lab 2 Taint
+
+查看pod列表
+kubectl get pod -o wide
+  *找到当前负载较高的节点，比如k8s03
+
+给k8s03打污点
+kubectl taint node k8s03 aa=bb:NoExecute
+
+查看节点taints
+kubectl describe node k8s03
+
+查看pod列表
+kubectl get pod -o wide
+  *可以看到该节点上的pod已经被清空
+
+使用范例创建yaml
+nano katacoda.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: katacoda
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: katacoda
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+运行deployment
+kubectl apply -f katacoda.yaml 
+
+查看运行效果
+kubectl get pods -o wide
+
+使用以下范例，增加容忍，更新deployment，
+nano katacoda2.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: katacoda
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: katacoda
+    spec:
+      tolerations:  #增加容忍
+      - key: "aa"
+        operator: "Equal"
+        value: "bb"
+        effect: "NoExecute"
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+更新配置
+kubectl apply -f katacoda2.yaml
+
+查看pod列表，确认pod在k8s03节点上重建
+kubectl get pods -o wide
+
+删除现有污点
+kubectl taint node k8s03 aa-
+
+查看pod列表
+kubectl get pods -o wide
+
+清理deployment
+kubectl delete -f katacoda2.yaml
+
+
+Lab 3 使master能够承载工作负载
+
+查看master taints
+kubectl describe node k8s01
+ *特别留意 node-role.kubernetes.io/master
+
+删除master污点，使其能承载工作负载
+kubectl taint node k8s01 node-role.kubernetes.io/master-
+
+运行deployment
+kubectl apply -f katacoda.yaml
+
+查看pod列表，确认pod运行在三个节点上
+kubectl get pods -o wide
+
+清理deployment
+kubectl delete -f katacoda.yaml 
+
+运行daemonset
+kubectl apply -f katacoda-daemonsets.yaml 
+
+查看pod列表
+kubectl get pod -o wide
+
+清理daemonset
+kubectl delete -f katacoda-daemonsets.yaml 
+
+查看pod列表
+kubectl get pod -o wide
+  *曲终人散
+
+
+
+备注：
+恢复master的taint
+kubectl taint node k8s01 node-role.kubernetes.io/master:NoSchedule

@@ -1,0 +1,501 @@
+Lab 1 更新mysql的配置文件
+
+
+创建configmap目录并进入
+mkdir configmaps
+
+cd configmaps/
+
+使用范例创建配置文件
+nano mysqld.cnf
+
+[mysqld]
+pid-file  = /var/run/mysqld/mysqld.pid
+socket    = /var/run/mysqld/mysqld.sock
+datadir   = /var/lib/mysql
+symbolic-links=0
+port    = 3306
+
+创建mysql配置文件
+kubectl create configmap mysql-cnf --from-file=./mysqld.cnf -n blog
+
+查看configmap
+kubectl get configmap -n blog
+
+查看configmap详情
+kubectl describe configmap mysql-cnf -n blog
+
+kubectl get configmap mysql-cnf -n blog -o yaml
+
+从显示的配置文件中心进行适当变造，得到configmap的yaml文件
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-cnf
+  namespace: blog 
+data:
+  mysqld.cnf: | # 配置值
+    [mysqld]
+    pid-file  = /var/run/mysqld/mysqld.pid
+    socket    = /var/run/mysqld/mysqld.sock
+    datadir   = /var/lib/mysql
+    symbolic-links=0
+    port    = 3306
+
+
+更新mysql.depoly.yaml(ver 1.0)
+nano mysql.deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes:
+      - name: mysql-config # 定义configmap 卷
+        configMap:
+          name: mysql-cnf
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: mysql-config # 挂接configmap卷
+          mountPath: /etc/mysql/mysql.conf.d
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: wordpress
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+
+更新mysql
+kubectl apply -f mysql.deploy.yaml 
+
+查看blog名称空间
+kubectl get pods -n blog
+
+查看mysql的配置文件
+kubectl exec -it mysql-deploy-5bb8896746-pg5xj -n blog /bin/bash
+
+cat /etc/mysql/mysql.conf.d/mysqld.cnf 
+
+退出pod上下文
+exit
+
+
+Lab 2 键值对configmap的创建和使用
+
+创建新的configmap
+kubectl create configmap test-conf --from-literal=user=bob --from-literal=password=123456
+
+查看configmap
+kubectl describe configmap test-conf 
+
+kubectl get configmap test-conf -o yaml
+
+根据yaml文件的输出进行适当变造得到如下configmap的yaml文件
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-conf
+  namespace: default
+data:
+  password: "123456" # 明文显示的用户名和密码
+  user: bob
+
+使用样例创建yaml文件
+nano test-conf.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf
+  name: test-conf
+spec:
+  volumes:
+  - name: config
+    configMap:
+      name: test-conf 
+  containers:
+  - image: busybox
+    name: test-conf
+    volumeMounts:
+    - name: config
+      mountPath: /tmp/volume
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+创建pod
+kubectl apply -f test-conf.pod.yaml 
+
+进入pod上下文验证configmap的配置
+kubectl exec -it test-conf /bin/sh
+
+cd /tmp/volume/
+
+ls
+
+cat user
+
+cat password
+
+退出pod上下文
+exit
+
+
+Lab 3 使用env映射configmap
+
+使用样例创建yaml文件
+nano test-conf-2.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-conf-2
+  name: test-conf-2
+spec:
+  containers:
+  - image: busybox
+    name: test-conf-2
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+    env:
+    - name: USER
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: user
+    - name: PASSWORD
+      valueFrom:
+        configMapKeyRef:
+          name: test-conf
+          key: password
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+创建pod
+kubectl apply -f test-conf-2.pod.yaml 
+
+进入pod上下文验证configmap的配置
+kubectl exec -it test-conf-2 /bin/sh
+
+env | grep USER
+
+env | grep PASSWORD
+
+退出pod上下文
+exit
+
+
+Lab 4 secrect
+
+查看此前包含密码的configmap
+kubectl describe configmap test-conf
+  *密码是明文显示
+
+创建secret
+kubectl create secret generic mysql-pass --from-literal=password=password -n blog
+
+查看secret
+kubectl get secret -n blog
+
+kubectl describe secret mysql-pass -n blog
+
+kubectl get -o yaml secret mysql-pass -n blog
+  *找到password对应的值
+
+解码password
+echo d29yZHByZXNz | base64 -d
+
+将secrect密文更新到mysql.deploy2.yaml
+nano mysql.deploy2.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deploy
+  namespace: blog
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      volumes:
+      - name: mysql-config # 定义configmap 卷
+        configMap:
+          name: mysql-cnf
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: mysql-config # 挂接configmap卷
+          mountPath: /etc/mysql/mysql.conf.d
+        ports:
+        - containerPort: 3306
+          name: dbport
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom: # 从secrect处调用密码
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          value: wordpress
+
+更新mysql
+kubectl apply -f mysql.deploy2.yaml
+
+进入mysql上下文查看env
+kubectl exec -it mysql-deploy-6dbc9776b-5z8n5 /bin/bash -n blog
+
+env
+ *关注MYSQL_ROOT_PASSWORD=password
+ 
+退出pod上下文
+exit
+
+将secrect密文更新到wordpress.deploy.yaml（选做）
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deploy
+  namespace: blog
+  labels:
+    app: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:php7.4
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: wdport
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql.blog.svc.cluster.local:3306 #此处是mysql svc的域名，且可以忽略3306端口号
+        - name: WORDPRESS_DB_USER
+          value: root
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom: # 从secrect处调用密码
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: WORDPRESS_DB_NAME
+          value: wordpress
+
+kubectl apply -f wordpress.deploy.yaml
+
+
+Lab 5 使用来自文件的secret
+
+基于文件创建secret
+cd configmap
+
+kubectl create secret generic mysql-conf --from-file=mysqld.cnf
+
+查看secret
+kubectl get secret
+
+kubectl get secret mysql-conf -o yaml
+  *注意，此处mysqld.cnf的值被加密
+
+尝试对这个值进行解码
+echo W215c3FsZF0KcGlkLWZpbGUgID0gL3Zhci9ydW4vbXlzcWxkL215c3FsZC5waWQKc29ja2V0ICAgID0gL3Zhci9ydW4vbXlzcWxkL215c3FsZC5zb2NrCmRhdGFkaXIgICA9IC92YXIvbGliL215c3FsCnN5bWJvbGljLWxpbmtzPTAKcG9ydCAgICA9IDMzMDYK | base64 -d
+
+使用上述范例创建配置文件
+nano test-secret.pod.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-secret
+  name: test-secret
+spec:
+  volumes:
+  - name: test-secret
+    secret:
+      secretName: mysql-conf
+  containers:
+  - image: busybox
+    name: test-secret
+    volumeMounts:
+    - name: test-secret
+      mountPath: /tmp/volume
+    command:
+    - "/bin/sh"
+    - "-c"
+    - "sleep 37000"
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+
+更新pod
+kubectl apply -f test-secret.pod.yaml 
+
+进入pod上下文验证secret的配置
+kubectl exec -it test-secret /bin/sh
+
+cat /tmp/volume/mysqld.cnf
+
+退出pod上下文
+exit
+
+清理
+kubectl delete -f .
+
+Lab 6 docker registry (选做)
+
+使用以下范例创建yaml文件
+nano test-registry.pod.yaml
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: test-registry
+  name: test-registry
+spec:
+  imagePullSecrets:
+  - name: image-sec
+  containers:
+  - image: registry.cn-zhangjiakou.aliyuncs.com/cka-test/nginx
+    name: test-registry
+
+编码docker login信息
+cat /root/.docker/config.json | base64 -w0
+
+只用之前编码的docker login信息并使用以下范例生成docker rigistry文件
+
+nano image-secret.yaml 
+
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: image-sec
+  namespace: default
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJyZWdpc3RyeS5jbi16aGFuZ2ppYWtvdS5hbGl5dW5jcy5jb20iOiB7CgkJCSJhdXRoIjogImVXRnVjblZ2WjNWQVoyMWhhV3d1WTI5dE9ubDVlWGN3TnpFeEppWT0iCgkJfQoJfQp9
+
+
+lab 7 TLS 选做
+
+创建基于TSL的secret
+kubectl create secret tls ca-secret --key train.key --cert train.crt -n blog
+
+查看secret
+kubectl get secret -n blog
+
+kubectl describe secret ca-secret  -n blog
+
+kubectl get -o yaml secret ca-secret -n blog
+
+对输出的yaml文件进行变造
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ca-secret
+  namespace: default
+type: kubernetes.io/tls
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1ERXlNekF6TlRBd09Gb1hEVE14TURFeU1UQXpOVEF3T0Zvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTmVLCkRWa3ltNDk1R1R3UWxHbG1GYmVCUjJMY0EybFZNcGs2L3ZQM21XWXBLOTR2ODJHUFNOU2V0dENJaGpyVWU2Q3IKQndvSDhJNWFyMEV4VzNEVHpKWERaUXlRMktod2s3ZHo3RjlqNVFjcjNOMGlxUDY4dGk0Rm5say9BOStxZDlFdwpHMlZWaXF6TU9NMzBacEVxejkwVU5qZmYrdlRDcUt5MlI3MDZKWFF4d1JSSENNbEtvbVZFeFNIakdXSU5nUm9nCk5PaTd2UzBBb0VMMXZaamxvWVdSWXJsQVJvekp5SUJSaVRuWUwxU1JpWmhzYzFLQ2JMTy9qbDcyOGQ2UGpNK0wKNXlhMmZ6TDlwRlQ0VlZoWGl1a2tZcUI1TndXMnIyemdySDUrbGFhaUFBbW52alRSOWhSclJkNHE1eWJRWGF1YwpBZUtJVXVRVDR0M0ZONWZydDIwQ0F3RUFBYU5DTUVBd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZCb2hxQlBCZ1VWNUVMbDluS0YrQUJJOTVMQlVNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFBQkljM1NGSlJwQ0dGWGs0L0JHYzBiNE4rTURLd3hWdnpnNWhMZy9IYUtoeGxQZmJhVgp0ZTlWSit5ekJTaVcwTEppRlJTRzhmWXc5RHk3TWdMdC9lTWk0bng1Qk1lKzhvcGZnQkZoaDFFSXljM2lPQ05nCkdaMy9LbEp4TngxcStUMHR0U1BpN0hPTnd2WDR6VEdGSFBQYjhKMW5IdFBESlpSdmloM3BMUlFiNTVPRTBjWmYKNGc0bFBZV0RBVHhwTTR0OGlKM2d6TDl4MUZTQlE1VUZhWmMzb2VPUzVkZm1pQlZQUUVJSUFCWkhjcVlmd3hyNwoyNXNSdC9sT3lRb3lXU0pCU29Ca1hOdTc1emY1Q3U4U1JMTEJIajNiVS9BQlhKRncrL2lVYS8vYWN6Yy80TE8zClNGc1pTd2t0aUxFQk9ZT1hGdVl1NDA1YnVoaUszdWd6U09WUQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb2dJQkFBS0NBUUVBMTRvTldUS2JqM2taUEJDVWFXWVZ0NEZIWXR3RGFWVXltVHIrOC9lWlppa3IzaS96CllZOUkxSjYyMElpR090UjdvS3NIQ2dmd2pscXZRVEZiY05QTWxjTmxESkRZcUhDVHQzUHNYMlBsQnl2YzNTS28KL3J5MkxnV2VXVDhEMzZwMzBUQWJaVldLck13NHpmUm1rU3JQM1JRMk45LzY5TUtvckxaSHZUb2xkREhCRkVjSQp5VXFpWlVURkllTVpZZzJCR2lBMDZMdTlMUUNnUXZXOW1PV2hoWkZpdVVCR2pNbklnRkdKT2RndlZKR0ptR3h6ClVvSnNzNytPWHZieDNvK016NHZuSnJaL012MmtWUGhWV0ZlSzZTUmlvSGszQmJhdmJPQ3NmbjZWcHFJQUNhZSsKTk5IMkZHdEYzaXJuSnRCZHE1d0I0b2hTNUJQaTNjVTNsK3UzYlFJREFRQUJBb0lCQUcrbnhtNTB0djFHQUhxTApKRGJOZVdhTWhBeUVhUWdCNktwVVU0clNzeGFuTVdCeWVxUUpjL01oSFJjK0Fqc3JvN2VCb2EzaW13MURrUkkyCm5XWC9jallLK0tmZnlUekl4TnorSW03djhzOGFPOW9hZ0cwbUdVSVNDd3UwaHk4d3djME9ITU1MNDBETXNvaU8KbVN1T2dBdkkwcVZ6VkMvRFAxbnBPNVNkTUpYVjFIQzFzcFpOdm1vRlJKdmtWRnlGRWRBTG56Y09tM1h0bUp3ZApTMFVkbXBreDMvemdKSjNUWk10Zzl5SGpLM2RHMW5KMHlOa21GaXVOVjlKQWV5YXFjdW8yNEIvVTErYi9aUXc1CmlWQUxuN1ZtaHRVY0kzT1NSUTNVQVh4djNFdjc2MkV2OEZyV284VkUzWCsrT2RLS2J2bkZ2bllJZnJDTXBqUDMKNjRyeGg4a0NnWUVBMnNmWkk1MVdsYWgrcnBjcjhuQ1F4UmRaNWhidkJHaTVzYi9rYWNuL25BV240ZXloNHFvbQpmaW1HQko5S1JlM2crVDZ1bzdvYmtucXFNWTlxelpiMWx2NTJsc0o4TElSajF6NUMvZXNCeW55VE1qM3NIWlFhClAzWGxiYm4zMlJ4dmNmdU43aU5xNkZjR0xwaUJLeWZQVTgyTWFXM3hMN0ZBdWlQc2hrT0V6eE1DZ1lFQS9EVUoKb0g0b1NQRkp5U010WXFDa2JOUEJuNDdmSGQyZXloK3Jaa2VDZ1ExaUtFU2x2UXRmSHAwSGJsS1p3VlBaNndYYQpCSVBhdVpOSlhkYmNBK1JpOHFqb3Q0cE0wSFZ5OTVyYjJNZXRuWXlSTjZnZ3FhcGtwZVRKSnJtb2FDWFJFM3ZDCml0N1g4Z2xsK1pLeTZDbWUvRXNBS25pcmpUMkIxaTdZREVMNXIzOENnWUFTMW9CbzQ2UlA4Smt2MlU1c2FxcmMKZlowOUJaNkJCNjl0a2JOT05KbHd5ci9nNFNvelJTbFpWYVAzZyt1MlI3eEdXZEpad0syZEdEak5XYWI5bXREOAp0bDVwcnNkWVlmSGkxN2FXL0lSRDlpUUtnSEJ6UDR4ZkNIeS96UEo5WEVod1RSTzBmSkk0L1QxSUI5T2ZicWNZCmRTdHc3SW1HN01GQkJkVFkzcmx4eHdLQmdDeUpYU0xYUkZ2bEtBZDV5OGp2M3psTWg1T2FrakhlOGV4MWZUbjUKaE1VdlROY1prRDc2NUJndTJLSVZ1Z3NXdUpPMUc5UFNTT3llWXNWTWJOdlBGOTRNRDlSaGVzRVJESFZIQm0yWQpqVU1XRUlySWlNUU5UK3F2cFFuT25UdU8rZ1c3eEJYcjFpeHFsblJsQUd6WTlMZE9zei9Nd1ZhV3R2ZlFtOXhHCmMzc1hBb0dBWm9sZGx2UUY0Szg5OFpzNVRHTHFyM0NMczg2ejN2UHdSTWwvY1V4aGxjNktCK0lFNG1sNzhiWEQKQzdXM1dEd2hOOTduWUVackZ5Q0NLc2hVS2RVL2Zqb3lIU1BkRFk0NkJYZXF3R0x0eTBWYURCOWdlMjh5eEpMcQo1R0hWak5lQWR3UElGdEh1Z3piY3NQWWJQeVNMZGtNOFo0bVJEL24yUnFaQkxXQlZGcWM9Ci0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+
+
+使用以下范例创建ingress yaml文件
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wordpress-ingress
+  namespace: blog
+spec:
+  tls:
+  - hosts:
+    - wordpress.example.com
+    secretName: ca-secret
+  rules:
+  - host: wordpress.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wordpress-svc
+            port:
+              number: 80
+
+访问链接
+curl -k https://wordpress.example.com -I
+
+备注
+
+mysql配置文件的获取
+
+查看blog名称空间
+kubectl get pods -n blog
+
+
+查看mysql的配置文件
+kubectl exec -it mysql-deploy-5bb8896746-pg5xj -n blog /bin/bash
+
+cat /etc/mysql/mysql.conf.d/mysqld.cnf 
+  *copy其中内容如下所示
+
+
+[mysqld]
+pid-file        = /var/run/mysqld/mysqld.pid
+socket          = /var/run/mysqld/mysqld.sock
+datadir         = /var/lib/mysql
+#log-error      = /var/log/mysql/error.log
+# By default we only accept connections from localhost
+#bind-address   = 127.0.0.1
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0

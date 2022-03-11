@@ -1,0 +1,464 @@
+
+lab 1 在CentOS上安装K8S
+
+
+公共配置
+
+#安装 nano
+#sudo yum install -y nano
+
+#修改主机名
+#hostnamectl set-hostname k8s01 --static
+
+
+添加hosts
+nano /etc/hosts
+
+192.168.0.123 cka-0001
+192.168.0.114 cka-0002
+192.168.0.47 cka-0003
+
+清空防火墙规则和selinux：
+iptables -F
+setenforce 0 
+sed -i 's/SELINUX=/SELINUX=disabled/g' /etc/selinux/config
+
+设置yum源
+wget -O /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo
+wget -O /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
+
+修改内核参数：
+nano /etc/sysctl.conf
+# 在/etc/sysctl.conf中添加如下配置项
+net.ipv4.ip_forward = 1
+vm.swappiness = 0
+# 保存文件并关闭，执行如下指令： 
+sysctl -p
+
+加载内核模块
+cat > /etc/sysconfig/modules/ipvs.modules <<EOF
+#!/bin/bash
+modprobe -- br_netfilter
+modprobe -- ip_vs
+modprobe -- ip_vs_rr
+modprobe -- ip_vs_wrr
+modprobe -- ip_vs_sh
+modprobe -- nf_conntrack_ipv4
+EOF
+
+chmod 755 /etc/sysconfig/modules/ipvs.modules && \
+bash /etc/sysconfig/modules/ipvs.modules && \
+lsmod | grep -E "ip_vs|nf_conntrack_ipv4"
+
+安装docker
+
+yum install -y yum-utils
+
+yum-config-manager --add-repo http://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+
+yum install -y docker-ce
+
+mkdir /etc/docker
+
+cat > /etc/docker/daemon.json << EOF
+{
+    "exec-opts": ["native.cgroupdriver=systemd"],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "100m",
+        "max-file": "10"
+    },
+    "registry-mirrors": ["https://pqbap4ya.mirror.aliyuncs.com"]
+}
+EOF
+
+systemctl restart docker
+systemctl enable docker
+
+安装kubeadm、kubelet、kubectl：
+cat > /etc/yum.repos.d/kubernetes.repo <<EOF
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg
+EOF
+
+yum install -y kubelet-1.19.0 kubeadm-1.19.0 kubectl-1.19.0
+
+# yum install -y kubelet kubeadm kubectl 最新版
+
+master节点配置
+
+创建通过如下指令创建默认的kubeadm-config.yaml文件：
+kubeadm config print init-defaults  > kubeadm-config.yaml
+
+修改配置
+nano kubeadm-config.yaml 
+
+apiVersion: kubeadm.k8s.io/v1beta2
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.0.183 # 更新为master节点的ip地址
+  bindPort: 6443
+nodeRegistration:
+  criSocket: /var/run/dockershim.sock
+  name: 192.168.0.183
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+apiVersion: kubeadm.k8s.io/v1beta2
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager: {}
+dns:
+  type: CoreDNS
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers # 更新为国内镜像源
+kind: ClusterConfiguration
+kubernetesVersion: v1.19.0
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16 # 增加podSubnet 
+scheduler: {}
+
+安装master节点
+kubeadm init --config kubeadm-config.yaml
+
+记录kubeadmin join
+kubeadm join 192.168.0.123:6443 --token abcdef.0123456789abcdef \
+    --discovery-token-ca-cert-hash sha256:497d75ec3a89b82de3c5763d3e1908329f3d1fbceef2554c1e3386d834d4d3d4
+
+配置访问群集
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -u) $HOME/.kube/config
+
+安装calico
+curl https://docs.projectcalico.org/manifests/calico.yaml -O
+
+kubectl apply -f calico.yaml
+
+
+配置work节点
+kubeadm join 192.168.0.123:6443 --token abcdef.0123456789abcdef \
+    --discovery-token-ca-cert-hash sha256:497d75ec3a89b82de3c5763d3e1908329f3d1fbceef2554c1e3386d834d4d3d4
+
+设置kubelet自动启动
+systemctl enable kubelet
+
+创建测试用deployment
+kubectl create deployment katacoda --image=katacoda/docker-http-server --replicas=3
+
+查看pod创建过程
+kbuectl get pod -o wide
+  *关注pod的ip地址以及所处节点
+
+尝试访问不同节点上的pod
+curl 10.244.3.66
+
+curl 10.244.191.1
+
+如果有类似以下显示则没问题
+# <h1>This request was processed by host: katacoda-7d9959c669-h6mdh</h1>
+
+
+启用命令补全
+yum install -y bash-completion
+source /usr/share/bash-completion/bash_completion
+source <(kubectl completion bash)
+echo “source <(kubectl completion bash)” >> ~/.bashrc
+
+
+
+lab 2 在ubuntu 18.04上安装K8S （可选）
+准备工作（所有节点操作）
+
+1. 配置主机名
+# 以master为例
+hostnamectl set-hostname cka-master
+
+
+2. 修改/etc/hosts
+#以master为例
+
+nano /etc/hosts
+192.168.0.180 cka-master 
+
+172.16.113.19 k8s02
+172.16.113.20 k8s01
+172.16.113.21 k8s03
+
+
+3. 修改apt源
+sudo nano /etc/apt/sources.list
+# 清空/etc/apt/sources.list，并添加如下内容,如果是在阿里云上的vm，这步可以跳过
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+
+deb http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+
+执行apt源更新操作
+apt update -y 
+
+
+4. 清空防火墙规则
+iptables -F
+
+
+5. 修改内核参数
+apt-get install procps
+
+nano /etc/sysctl.d/k8s.conf
+
+net.ipv4.ip_forward = 1
+vm.swappiness = 0
+
+sysctl -p /etc/sysctl.d/k8s.conf
+
+6. 加载内核模块
+cat > /etc/modules-load.d/modules.conf <<EOF
+br_netfilter
+ip_vs
+ip_vs_rr
+ip_vs_wrr
+ip_vs_sh
+nf_conntrack_ipv4
+EOF
+
+for i in br_netfilter ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack_ipv4;do modprobe $i;done
+
+
+7. 安装docker
+apt -y install apt-transport-https ca-certificates curl software-properties-common
+
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable"
+
+apt update -y 
+apt install docker-ce -y 
+
+# curl -sSL https://get.docker.com/ | sh
+# usermod -aG docker chengzh
+
+mkdir /etc/docker
+
+cat > /etc/docker/daemon.json << EOF
+{
+    "exec-opts": ["native.cgroupdriver=systemd"],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "100m",
+        "max-file": "10"
+    },
+    "registry-mirrors": ["https://pqbap4ya.mirror.aliyuncs.com"]
+}
+EOF
+
+systemctl restart docker
+systemctl enable docker
+
+
+8. 安装kubeadm、kubectl、kubelet
+apt-get update && apt-get install -y apt-transport-https
+curl https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | apt-key add - 
+cat > /etc/apt/sources.list.d/kubernetes.list << EOF 
+deb https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main
+EOF
+apt update -y 
+
+apt-cache madison kubelet
+
+apt install -y kubelet=1.19.0-00 kubeadm=1.19.0-00  kubectl=1.19.0-00
+
+# 安装当前最新版本 apt install -y kubelet kubeadm kubectl
+# 如果有key和签名方面的报错，尝试使用 apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 8B57C5C2836F4BEB 进行排错
+
+安装master(只在master上操作)
+
+kubeadm config print init-defaults  > kubeadm-config.yaml
+
+nano kubeadm-config.yaml
+
+apiVersion: kubeadm.k8s.io/v1beta2
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.0.180
+  bindPort: 6443
+nodeRegistration:
+  criSocket: /var/run/dockershim.sock
+  name: cka-master
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+apiVersion: kubeadm.k8s.io/v1beta2
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager: {}
+dns:
+  type: CoreDNS
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers
+kind: ClusterConfiguration
+kubernetesVersion: v1.18.13
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16
+scheduler: {}
+
+#提前拖映像
+#kubeadm config images pull
+
+安装k8s群集
+kubeadm init --config kubeadm-config.yaml
+
+记录kubeadmin join
+kubeadm join 172.16.113.20:6443 --token abcdef.0123456789abcdef \
+    --discovery-token-ca-cert-hash sha256:5d9d4f51b204b473d6f6e8a3d6cbff6351976acc0bfe548925cac8a77da469b4 
+
+
+配置访问群集
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -u) $HOME/.kube/config
+
+ 
+部署网络插件
+curl https://docs.projectcalico.org/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
+
+
+
+节点操作
+
+节点上加入到k8s
+
+
+设置kubelet自动启动
+systemctl enable kubelet
+
+
+
+
+
+创建测试用deployment
+kubectl create deployment katacoda --image=katacoda/docker-http-server --replicas=3
+
+查看pod创建过程
+kubectl get pod -o wide
+  *关注pod的ip地址以及所处节点
+
+尝试访问不同节点上的pod
+curl 10.244.3.66
+
+curl 10.244.191.1
+
+如果有类似以下显示则没问题
+# <h1>This request was processed by host: katacoda-7d9959c669-h6mdh</h1>
+
+
+
+备注：
+
+配置国内镜像源
+
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+    "registry-mirrors": [
+        "https://1nj0zren.mirror.aliyuncs.com",
+        "https://docker.mirrors.ustc.edu.cn",
+        "http://f1361db2.m.daocloud.io",
+        "https://dockerhub.azk8s.cn"
+    ]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+
+本地环境增补步骤（适用于hyper-v ubuntu 20.04）
+
+
+设置虚机计算机名
+hostnamectl set-hostname node1
+
+
+关闭swap
+sudo swapoff -a
+
+sudo rm /swap.img
+
+nano /etc/fstab 
+#注释最后一行
+
+
+设置固定IP地址
+
+安装nmcli
+apt install network-manager -y 
+
+修改配置文件
+nano /etc/netplan/00-installer-config.yaml
+
+network:
+  version: 2
+  ethernets:
+    eth0:   # 配置的网卡的名称
+      addresses: [192.168.1.201/24]   # 配置的静态ip地址和掩码
+      dhcp4: no    # 关闭dhcp4
+      optional: true
+      gateway4: 192.168.1.1 # 网关地址
+      nameservers:
+        addresses: [192.168.1.1]  # DNS服务器地址，多个DNS服务器地址需要用英文逗号分隔开，可不配置
+
+https://www.myfreax.com/how-to-configure-static-ip-address-on-ubuntu-20-04/
+
+  
+使配置生效
+netplan apply
+
+
+#卸载docker
+#snap remove docker

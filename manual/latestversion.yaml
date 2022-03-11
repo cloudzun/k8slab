@@ -1,0 +1,149 @@
+*基于程尊华提供的基准映像，且运行在huaweicloud环境中
+
+
+记录每台机器的内网地址，如果没有特殊情况通常node的IP地址段为：192.168.0.0，可以把观察到的ip地址记录到下述步骤的命令行中
+
+
+在每台机器上修改主机名和hosts文件
+
+hostnamectl set-hostname node # 记得替换主机编号
+
+
+cat >> /etc/hosts << EOF
+192.168.0.42 node1
+192.168.0.169 node2 nfs
+192.168.0.198 node3
+EOF
+
+
+安装kubeadm、kubectl、kubelet
+
+apt update -y 
+
+apt-cache madison kubelet # 查看目前发布的版本
+
+apt install -y kubelet kubeadm kubectl # 安装最新版本的kube三兄弟
+
+
+安装master(只在master上操作)
+
+kubeadm config print init-defaults  > kubeadm-config.yaml
+
+nano kubeadm-config.yaml
+
+apiVersion: kubeadm.k8s.io/v1beta2
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.0.42 # 替换为node1的内网地址
+  bindPort: 6443
+nodeRegistration:
+  criSocket: /var/run/dockershim.sock
+  name: cka-master
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+apiVersion: kubeadm.k8s.io/v1beta2
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager: {}
+dns:
+  type: CoreDNS
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers # 替换映像地址
+kind: ClusterConfiguration
+kubernetesVersion: v1.23.0 #观察kube三兄弟的版本号
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16 # 增加podSubnet
+scheduler: {}
+
+
+安装k8s群集
+kubeadm init --config kubeadm-config.yaml
+
+记录加入群集的token
+kubeadm join 192.168.0.42:6443 --token abcdef.0123456789abcdef \
+        --discovery-token-ca-cert-hash sha256:fe30fe4b7762331ea946d8d5de9a3cee7dbc51b6de1c7bf85db98f63184d61c5
+
+
+配置访问群集
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -u) $HOME/.kube/config
+
+ 
+部署网络插件
+curl https://docs.projectcalico.org/manifests/calico.yaml -O
+kubectl apply -f calico.yaml       
+
+
+设置自启动
+systemctl enable kubelet
+
+其他节点加入到群集
+
+
+验证群集
+
+查看节点
+kubectl get node -o wide
+
+查看所有pod
+kubectl get pod -A #确定所有容器都已经运行起来了
+
+kubectl get pod -A -o wide # 查看更多详细信息
+ 
+查看svc
+kubectl get svc -A # 观察kubernetes和kube-dns服务
+
+telnet 10.96.0.1 443  # 测试kubernetes服务
+
+telnet 10.96.0.10 53  # 测试kube-dns服务
+
+
+
+创建测试用deployment
+kubectl create deployment katacoda --image=katacoda/docker-http-server --replicas=3
+
+查看pod创建过程
+kubectl get pod -o wide
+  *关注pod的ip地址以及所处节点
+
+尝试访问不同节点上的pod
+curl 10.244.3.66
+
+curl 10.244.191.1
+
+如果有类似以下显示则没问题
+# <h1>This request was processed by host: katacoda-7d9959c669-h6mdh</h1>
+
+发布服务
+kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/katasvc2.yaml
+
+观察katacoda2服务的
+kubectl get svc
+
+使用http://nodepublicip:nodeport进行访问
+
+
+备注：
+
+*推倒重装
+kubeadm reset 
+
+*删除master污点，使其能承载工作负载
+kubectl taint node node1 node-role.kubernetes.io/master-

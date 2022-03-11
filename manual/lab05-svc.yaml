@@ -1,0 +1,249 @@
+Lab 1 创建deployment
+
+创建kdtacoda deployment示例yaml
+kubectl create deployment katacoda --image=katacoda/docker-http-server --dry-run=client -o yaml 
+进行适当的修改得到示例文件
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: katacoda
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: katacoda
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+使用示例文件创建yaml文件
+nano katacoda.yaml
+
+创建deployment
+kubectl create -f katacoda.yaml
+
+查看pod，重点关注pod的名称和ip地址
+kubectl get pods -o wide
+
+访问其中某个pod，查看访问效果
+curl http://10.244.235.142
+
+
+Lab 2 创建cluster ip svc
+
+创建cluster ip svc yaml示例文件
+kubectl create service clusterip katacoda --tcp 80:80 --dry-run=client -o yaml
+
+经过适当变造得到示例文件
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+  type: ClusterIP
+
+使用示例文件创建yaml文件
+nano katasvc.yaml
+
+创建service发布服务
+kubectl apply -f katasvc.yaml 
+
+查看服务，重点关注TYPE和CLUSTER-IP
+kubectl get svc
+
+使用服务的ip访问
+curl 10.100.79.233
+ *多访问几次，观察负载均衡效果
+
+
+Lab 3 创建nodeport svc服务
+
+创建nodeport svc yaml示例文件
+kubectl create service nodeport katacoda --tcp 80:80 --dry-run=client -o yaml
+
+经过适当变造得到示例文件
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda2
+spec:
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+  type: NodePort
+
+使用示例文件创建yaml文件
+nano katasvc2.yaml
+
+创建service发布服务
+kubectl apply -f katasvc2.yaml 
+
+查看服务，重点关注TYPE和Port
+kubectl get svc
+
+使用主机名/IP地址加端口号的方式进行访问
+curl k8s01:30363
+ *如果使用云主机做实验，也可用节点的公网IP地址加端口方式进行访问，但是前提是需要设置网络安全组
+
+修改nodeport端口到30080
+KUBE_EDITOR="nano" kubectl edit svc katacoda2
+
+ports:
+  - name: 80-80
+    nodePort: 30080 # 指定端口
+    port: 80
+    protocol: TCP
+    targetPort: 80
+
+  *亦可参照该范例修改ymal文件
+
+查看服务，重点关注TYPE和Port
+kubectl get svc
+
+Lab 4 创建 none clusterIP服务，并进行名称解析
+
+使用示例文件创建yaml文件
+nano katasvc3.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: katacoda
+  name: katacoda3
+spec:
+  clusterIP: None
+  ports:
+  - name: 80-80
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: katacoda
+
+创建none clusterIP 发布服务
+kubectl apply -f katasvc3.yaml 
+
+查看服务，重点关注katacoda3的CLUSTER-IP
+kubectl get svc
+
+创建busybox pod，进行dns解析
+kubectl run test-dns --image=busybox:1.28 -- sleep 3600
+
+进入pod
+kubectl exec -it test-dns -- /bin/sh 
+
+解析
+nslookup katacoda3.default.svc.cluster.local
+  *多执行几次，观察轮询效果
+
+退出pod上下文
+exit
+
+Lab 5 使用ingress发布服务
+
+使用 ver 3.0创建yaml
+kubectl apply -f ingress-nginx.yaml 
+# kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+
+查看ingress-nginx的pod
+kubectl get pods -n ingress-nginx -o wide
+  *关注ingress-nginx-controller所在节点
+
+查看ingress-nginx的svc  
+kubectl get svc -n ingress-nginx
+
+使用以下范例创建ingress文件
+nano katacoda.ingress.yaml 
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: katacoda-ingress
+spec:
+  rules:
+  - host: hello.example.com # 主机名
+    http:
+      paths:
+      - path: / # 路径
+        pathType: Prefix
+        backend: # 后端服务
+          service:
+            name: katacoda 
+            port:
+              number: 80 
+
+创建ingress
+kubectl apply -f katacoda.ingress.yaml 
+
+查看ingress，观察ADDRESS选项
+kubectl get ingress
+
+使用以下命令测试ingress
+curl http://192.168.0.36 -H "Host: hello.example.com"
+
+亦可修改hosts文件
+nano /etc/hosts
+ * 192.168.0.36    hello.example.com
+
+测试
+curl http://hello.example.com
+
+清理deploymen和服务
+kubectl delete -f katacoda.ingress.yaml 
+kubectl delete -f katasvc3.yaml 
+kubectl delete -f katasvc2.yaml 
+kubectl delete -f katasvc.yaml 
+kubectl delete -f katacoda.yaml
+kubectl delete pod test-dns
+
+
+备注
+查看创建服务的帮助文件
+kubectl create service --help
+
+kubectl create service clusterip --help
+
+
+创建kdtacoda deployment示例yaml
+kubectl create deployment katacoda --image=katacoda/docker-http-server --dry-run=client -o yaml 
+
+创建cluster ip svc yaml示例文件
+kubectl create service clusterip katacoda --tcp 80:80 --dry-run=client -o yaml
+
+创建nodeport svc yaml示例文件
+kubectl create service nodeport katacoda --tcp 80:80 --dry-run=client -o yaml
+
+ *上述文件需要做少量的清理工作，注意缩进，svc如果要共存，则需要在对第二个文件中的服务名进行重命名
+
+
+ingress ver 3.0 范例
+
+https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+
+

@@ -1,0 +1,50 @@
+设置计算机名
+hostnamectl set-hostname node1
+
+
+关闭swap
+sudo swapoff -a
+
+sudo rm /swap.img
+
+nano /etc/fstab 
+#注释最后一行
+
+
+设置固定IP地址
+
+安装nmcli
+apt install network-manager -y 
+
+修改配置文件
+nano /etc/netplan/00-installer-config.yaml
+
+network:
+  version: 2
+  ethernets:
+    eth0:   # 配置的网卡的名称
+      addresses: [192.168.1.201/24]   # 配置的静态ip地址和掩码
+      dhcp4: no    # 关闭dhcp4
+      optional: true
+      gateway4: 192.168.1.1 # 网关地址
+      nameservers:
+        addresses: [192.168.1.1]  # DNS服务器地址，多个DNS服务器地址需要用英文逗号分隔开，可不配置
+  
+使配置生效
+netplan apply
+
+
+
+卸载docker
+snap remove docker
+
+
+修改host文件
+
+nano /etc/hosts
+
+192.168.1.201 node1
+192.168.1.202 node2
+192.168.1.203 node3
+
+
