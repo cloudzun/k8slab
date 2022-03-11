@@ -244,6 +244,6 @@ kubectl create service nodeport katacoda --tcp 80:80 --dry-run=client -o yaml
 
 ingress ver 3.0 范例
 
-https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+https://github.com/cloudzun/k8slab/blob/v1.23/svc/ingress-nginx.yaml
 
 
