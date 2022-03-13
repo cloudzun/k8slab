@@ -452,6 +452,13 @@ systemctl enable nfs-server
 showmount -e nfs-server
 
 
+NFS CSI driver for Kubernetes
+https://github.com/kubernetes-csi/csi-driver-nfs/
+
+这个版本采用的是3.1版本
+需要对原始文件中的映像路径进行替换： k8s.gcr.io/sig-storage/ -> registry.cn-hangzhou.aliyuncs.com/google_containers/
+
+
 
 
 
