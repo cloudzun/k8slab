@@ -7,6 +7,10 @@ metadata:
   name: csi-nfs-node
   namespace: kube-system
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
   selector:
     matchLabels:
       app: csi-nfs-node
@@ -17,35 +21,44 @@ spec:
     spec:
       hostNetwork: true  # original nfs connection would be broken without hostNetwork setting
       dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - operator: "Exists"
       containers:
         - name: liveness-probe
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/livenessprobe:v2.1.0
+          image: registry.cn-hangzhou.aliyuncs.com/google_containers/livenessprobe:v2.5.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29653
-            - --v=5
+            - --v=2
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: node-driver-registrar
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/csi-node-driver-registrar:v2.0.1
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -rf /registration/csi-nfsplugin /registration/csi-nfsplugin-reg.sock"]
+          image: registry.cn-hangzhou.aliyuncs.com/google_containers/csi-node-driver-registrar:v2.4.0
           args:
-            - --v=5
+            - --v=2
             - --csi-address=/csi/csi.sock
-            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-nfsplugin/csi.sock
+            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+          livenessProbe:
+            exec:
+              command:
+                - /csi-node-driver-registrar
+                - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+                - --mode=kubelet-registration-probe
+            initialDelaySeconds: 30
+            timeoutSeconds: 15
           env:
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/csi-nfsplugin/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -55,13 +68,19 @@ spec:
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
+          resources:
+            limits:
+              memory: 100Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
         - name: nfs
           securityContext:
             privileged: true
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/nfsplugin:amd64-linux-canary
+          image: mcr.microsoft.com/k8s/csi/nfs-csi:v3.1.0
           args:
             - "-v=5"
             - "--nodeid=$(NODE_ID)"
@@ -73,6 +92,18 @@ spec:
                   fieldPath: spec.nodeName
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+          ports:
+            - containerPort: 29653
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 30
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir
@@ -80,6 +111,12 @@ spec:
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
+          resources:
+            limits:
+              memory: 300Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
       volumes:
         - name: socket-dir
           hostPath:
