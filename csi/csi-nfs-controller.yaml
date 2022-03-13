@@ -14,20 +14,24 @@ spec:
       labels:
         app: csi-nfs-controller
     spec:
+      hostNetwork: true  # controller also needs to mount nfs to create dir
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: csi-nfs-controller-sa
       nodeSelector:
-        kubernetes.io/os: linux
+        kubernetes.io/os: linux  # add "kubernetes.io/role: master" to run controller on master node
       priorityClassName: system-cluster-critical
       tolerations:
         - key: "node-role.kubernetes.io/master"
-          operator: "Equal"
-          value: "true"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Exists"
           effect: "NoSchedule"
       containers:
         - name: csi-provisioner
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/csi-provisioner:v2.0.4
+          image: registry.cn-hangzhou.aliyuncs.com/google_containers/csi-provisioner:v2.2.2
           args:
-            - "-v=5"
+            - "-v=2"
             - "--csi-address=$(ADDRESS)"
             - "--leader-election"
           env:
@@ -38,30 +42,28 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 100m
-              memory: 100Mi
+              memory: 400Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: liveness-probe
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/livenessprobe:v2.1.0
+          image: registry.cn-hangzhou.aliyuncs.com/google_containers/livenessprobe:v2.5.0
           args:
             - --csi-address=/csi/csi.sock
             - --probe-timeout=3s
             - --health-port=29652
-            - --v=5
+            - --v=2
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
           resources:
             limits:
-              cpu: 100m
               memory: 100Mi
             requests:
               cpu: 10m
               memory: 20Mi
         - name: nfs
-          image: registry.cn-zhangjiakou.aliyuncs.com/breezey/nfsplugin:amd64-linux-canary
+          image: mcr.microsoft.com/k8s/csi/nfs-csi:v3.1.0
           securityContext:
             privileged: true
             capabilities:
@@ -79,6 +81,18 @@ spec:
                   fieldPath: spec.nodeName
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+          ports:
+            - containerPort: 29652
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 30
           volumeMounts:
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
@@ -87,7 +101,6 @@ spec:
               name: socket-dir
           resources:
             limits:
-              cpu: 200m
               memory: 200Mi
             requests:
               cpu: 10m
