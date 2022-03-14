@@ -314,7 +314,7 @@ kubectl delete -f resourcequota.yaml
 Lab 3 使用Helm安装redis
 
 安装helm
-wget https://chengzhstor.blob.core.chinacloudapi.cn/k8slab/helm-v3.3.0-linux-amd64.tar.gz
+wget https://chengzhstor.blob.core.windows.net/k8slab/helm-v3.3.0-linux-amd64.tar.gz
 
 tar xf helm-v3.3.0-linux-amd64.tar.gz
 
