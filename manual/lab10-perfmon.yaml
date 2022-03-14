@@ -510,6 +510,8 @@ echo Password: $(kubectl get secret --namespace default wordpress -o jsonpath="{
 访问wordprss管理界面
 http://node1:30080/admin
 
+卸载wordpress
+helm uninstall wordpress
 
 
 Lab 使用Helm安装kubernetes-dashboard
