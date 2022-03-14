@@ -627,9 +627,9 @@ kubectl create -f es-pv.yaml
 # kubectl create -f https://raw.githubusercontent.com/cloudzun/k8slab/main/perfmon/es-pv.yaml
 
 下载Helm仓库源码
-wget -O helm-charts.tgz  https://github.com/elastic/helm-charts/archive/7.6.2.tar.gz
+wget -O helm-charts.tgz  https://github.com/elastic/helm-charts/archive/7.9.2.tar.gz
 tar -zxvf helm-charts.tgz
-cd helm-charts-7.6.2
+cd helm-charts-7.9.2
 
 更改elasticsearch副本数，此处选用最低副本数
 nano elasticsearch/values.yaml
@@ -638,6 +638,15 @@ nano elasticsearch/values.yaml
 
 安装elasticsearch
 helm install es --namespace=efk ./elasticsearch
+
+修改 filebeat api version
+nano filebeat/templates/clusterrole.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+
+nano filebeat/templates/clusterrolebinding.yaml 
+
+apiVersion: rbac.authorization.k8s.io/v1
 
 安装filebeat
 helm install fb --namespace=efk ./filebeat
