@@ -1,0 +1,17 @@
+## Cluster settings
+cluster:
+  enabled: false
+
+## Redis pod Security Context
+securityContext:
+  enabled: false
+
+## Use password authentication
+usePassword: true
+## Redis password (both master and slave)
+password: "admin"
+
+## Redis Master parameters
+master:
+  persistence:
+    enabled: false
