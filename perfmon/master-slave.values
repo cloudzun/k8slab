@@ -1,0 +1,24 @@
+## Cluster settings
+cluster:
+  enabled: true
+  slaveCount: 1
+
+securityContext:
+  enabled: false
+
+## Use password authentication
+usePassword: true
+password: "admin"
+
+## Mount secrets as files instead of environment variables
+usePasswordFile: false
+
+## Redis Master parameters
+master:
+  persistence:
+    enabled: false
+
+## Redis Slave properties
+slave:
+  persistence:
+    enabled: false
