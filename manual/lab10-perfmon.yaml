@@ -15,7 +15,7 @@ kubectl top node
 
 kubectl top pod
 
-kubectl top pod -A
+#kubectl top pod -A
 
 kubectl top pod | sort -k3 -nr 
 
@@ -28,7 +28,7 @@ kubectl top pod | sort -k3 -nr | head -1 | awk '{print $2}' >/tmp/memtop.txt
 
 
 Lab 2 HPA
-修改kube-controller-manager.yaml，增加启动参数
+# 修改kube-controller-manager.yaml，增加启动参数
 nano /etc/kubernetes/manifests/kube-controller-manager.yaml 
 
     - --horizontal-pod-autoscaler-use-rest-clients=true
@@ -36,7 +36,7 @@ nano /etc/kubernetes/manifests/kube-controller-manager.yaml
     - --horizontal-pod-autoscaler-upscale-delay=20s
     - --horizontal-pod-autoscaler-sync-period=10s
 
-修改好之后，观察kube-controller-manager的自动重启
+# 修改好之后，观察kube-controller-manager的自动重启
 kubectl get pod -n kube-system | grep kube-controller-manager
 
 使用范例创建podinfo 
@@ -696,7 +696,7 @@ kubectl apply -f es-pv.yaml
 helm install es --namespace=efk ./elasticsearch
 
 
-Lab Potainer安装
+选做 Lab Potainer安装 
 
 使用以下范例创建pv定义
 nano portainer-pv.yaml
