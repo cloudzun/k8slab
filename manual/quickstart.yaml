@@ -1,4 +1,5 @@
-每台机器上安装NFS客户端
+*安装NFS
+在node1和node2上安装NFS客户端
 apt install -y nfs-kernel-server
 
 登录到Node2 安装NFS Server
@@ -23,7 +24,7 @@ systemctl restart nfs-server
 systemctl enable nfs-server
 
 
-在Node1，加载实验目录
+*在Node1，加载实验目录
 git clone https://github.com/cloudzun/k8slab/
 
 cd k8slab/
@@ -31,6 +32,7 @@ cd k8slab/
 git branch -a
 
 git checkout v1.23
+
 
 *启用ingress
 
@@ -66,7 +68,7 @@ metadata:
   name: nfs-csi
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: 192.168.0.123 # 指定nfs服务器地址
+  server: 192.168.0.123 # 指定nfs服务器地址，亦可使用nfs
   share: /data
 reclaimPolicy: Retain  # only retain is supported
 volumeBindingMode: Immediate
@@ -76,10 +78,10 @@ mountOptions:
 
 创建SC 
 kubectl apply -f nfs-sc.yaml
-
  
 查看sc 
 kubectl get sc -o wide
+
 
 
 *安装metrics-server
@@ -93,23 +95,7 @@ kubectl apply -f metrics-server.yaml
 kubectl get pod -n kube-system | grep metrics-server
 
 
-*启用HPA
-
-修改kube-controller-manager.yaml，增加启动参数
-nano /etc/kubernetes/manifests/kube-controller-manager.yaml 
-
-    - --horizontal-pod-autoscaler-use-rest-clients=true
-    - --horizontal-pod-autoscaler-downscale-delay=5m0s
-    - --horizontal-pod-autoscaler-upscale-delay=20s
-    - --horizontal-pod-autoscaler-sync-period=10s
-
-修改好之后，观察kube-controller-manager的自动重启
-kubectl get pod -n kube-system | grep kube-controller-manager
-
-
 *安装helm
-
-
 
 wget https://chengzhstor.blob.core.windows.net/k8slab/helm-v3.3.0-linux-amd64.tar.gz
 tar xf helm-v3.3.0-linux-amd64.tar.gz
