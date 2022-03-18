@@ -1,94 +1,5 @@
-*创建群集
-
-node 1操作步骤
-hostnamectl set-hostname node1
-
-nano /etc/hosts
-
-192.168.0.34 node1
-192.168.0.203 node2 nfs
-192.168.0.10 node3
-
-kubeadm config print init-defaults  > kubeadm-config.yaml
-
-nano kubeadm-config.yaml
-
-apiVersion: kubeadm.k8s.io/v1beta2
-bootstrapTokens:
-- groups:
-  - system:bootstrappers:kubeadm:default-node-token
-  token: abcdef.0123456789abcdef
-  ttl: 24h0m0s
-  usages:
-  - signing
-  - authentication
-kind: InitConfiguration
-localAPIEndpoint:
-  advertiseAddress: 192.168.0.180 # 替换为节点1地址
-  bindPort: 6443
-nodeRegistration:
-  criSocket: /var/run/dockershim.sock
-  name: cka-master
-  taints:
-  - effect: NoSchedule
-    key: node-role.kubernetes.io/master
----
-apiServer:
-  timeoutForControlPlane: 4m0s
-apiVersion: kubeadm.k8s.io/v1beta2
-certificatesDir: /etc/kubernetes/pki
-clusterName: kubernetes
-controllerManager: {}
-dns:
-  type: CoreDNS
-etcd:
-  local:
-    dataDir: /var/lib/etcd
-imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers # 替换为aliyun源
-kind: ClusterConfiguration
-kubernetesVersion: v1.18.13
-networking:
-  dnsDomain: cluster.local
-  serviceSubnet: 10.96.0.0/12
-  podSubnet: 10.244.0.0/16 # 增加podSubnet
-scheduler: {}
-
-安装k8s群集
-kubeadm init --config kubeadm-config.yaml
-
-记录kubeadmin join
-
-
-kubeadm join 192.168.0.242:6443 --token abcdef.0123456789abcdef \
-    --discovery-token-ca-cert-hash sha256:041e97b7e2afd7c8411e809fcd140744036f844b1febee2df1a5fe5c55cfae70
-
-
-配置访问群集
-mkdir -p $HOME/.kube
-cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-chown $(id -u):$(id -u) $HOME/.kube/config
- 
-部署网络插件
-curl https://docs.projectcalico.org/manifests/calico.yaml -O
-kubectl apply -f calico.yaml
-
-设置自启动
-systemctl enable kubelet
-
-安装NFS客户端
+每台机器上安装NFS客户端
 apt install -y nfs-kernel-server
-
-node 2操作步骤
-hostnamectl set-hostname node2
-
-nano /etc/hosts
-
-192.168.0.34 node1
-192.168.0.203 node2 nfs
-192.168.0.10 node3
-
-加入群集
-kubeadm join 
 
 安装NFS Server
 apt install -y nfs-kernel-server
@@ -110,28 +21,16 @@ systemctl restart nfs-server
 
 设置开机自启
 systemctl enable nfs-server
-systemctl enable kubelet
 
-node 3操作步骤
-hostnamectl set-hostname node3
 
-nano /etc/hosts
+在Node1，加载实验目录
+git clone https://github.com/cloudzun/k8slab/
 
-192.168.0.34 node1
-192.168.0.203 node2 nfs
-192.168.0.10 node3
+cd k8slab/
 
-kubeadm join 
+git branch -a
 
-设置自启动
-systemctl enable kubelet
-
-安装NFS客户端
-apt install -y nfs-kernel-server
-
-退回到node1，加载实验目录
-git clone https://github.com/cloudzun/k8slab
-cd k8slab
+git checkout v1.23
 
 *启用ingress
 
