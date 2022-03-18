@@ -1,7 +1,7 @@
 每台机器上安装NFS客户端
 apt install -y nfs-kernel-server
 
-安装NFS Server
+登录到Node2 安装NFS Server
 apt install -y nfs-kernel-server
 
 创建共享目录,设置共享权限
