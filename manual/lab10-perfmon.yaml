@@ -572,7 +572,11 @@ helm fetch prometheus-community/kube-prometheus-stack
 
 安装kube-prometheus-stack
 tar xf kube-prometheus-stack-34.1.0.tgz  #截至2022-3-18，最新版本是34.1.0
+cd kube-prometheus-stack
 
+# 国内安装获取安装源方法
+wget https://chengzhstor.blob.core.windows.net/k8slab/kube-prometheus-stack-34.1.0.tgz
+tar xf kube-prometheus-stack-34.1.0.tgz  #截至2022-3-18，最新版本是34.1.0
 cd kube-prometheus-stack
 
 参照以下步骤修改ingress-nginx镜像源
@@ -598,9 +602,9 @@ nano charts/kube-state-metrics/values.yaml
 
 ctrl \
 
-k8s.gcr.io/kube-state-metrics/kube-state-metrics
+k8s.gcr.io/kube-state-metrics
 
-chengzh
+chengzh/kube-state-metrics
 
 y
 
