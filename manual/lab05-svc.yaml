@@ -168,8 +168,8 @@ exit
 Lab 5 使用ingress发布服务
 
 使用 ver 3.0创建yaml
-kubectl apply -f ingress-nginx.yaml 
-# kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+ ingress-nginx.yaml 
+# kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/v1.23/svc/ingress-nginx.yaml
 
 查看ingress-nginx的pod
 kubectl get pods -n ingress-nginx -o wide
@@ -185,6 +185,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: katacoda-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
   rules:
   - host: hello.example.com # 主机名
@@ -196,7 +198,7 @@ spec:
           service:
             name: katacoda 
             port:
-              number: 80 
+              number: 80
 
 创建ingress
 kubectl apply -f katacoda.ingress.yaml 
