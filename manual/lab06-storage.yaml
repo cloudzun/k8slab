@@ -340,8 +340,8 @@ kubectl apply -f nfs-sc.yaml
 查看sc 
 kubectl get sc -o wide
 
-将nfs-csi设置为默认存储类
-kubectl patch storageclass nfs-csi -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+# 将nfs-csi设置为默认存储类
+# kubectl patch storageclass nfs-csi -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
 再次查看sc 
 kubectl get sc 
