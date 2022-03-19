@@ -249,3 +249,15 @@ ingress ver 3.0 范例
 https://github.com/cloudzun/k8slab/blob/v1.23/svc/ingress-nginx.yaml
 
 
+*ingress创建步骤
+
+https://segmentfault.com/a/1190000040618813
+
+
+wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.0.0/deploy/static/provider/baremetal/deploy.yaml
+
+sed -i 's@k8s.gcr.io/ingress-nginx/controller:v1.0.0\(.*\)@willdockerhub/ingress-nginx-controller:v1.0.0@' deploy.yaml
+sed -i 's@k8s.gcr.io/ingress-nginx/kube-webhook-certgen:v1.0\(.*\)$@hzde0128/kube-webhook-certgen:v1.0@' deploy.yaml
+kubectl apply -f deploy.yaml
+
+
