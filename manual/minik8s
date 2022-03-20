@@ -1,0 +1,218 @@
+基于华为云vm ubuntu基准映像，或者参照lab 1中的ubuntu中的前提条件进行准备
+
+*修改名称
+hostnamectl set-hostname node1
+
+nano /etc/hosts
+
+192.168.0.34 node1 nfs
+
+*安装kubeadm、kubectl、kubelet (使用1.23.0)
+
+apt update -y 
+
+apt-cache madison kubelet # 查看目前发布的版本
+
+apt install -y kubelet=1.23.0-00 kubeadm=1.23.0-00  kubectl=1.23.0-00
+
+ # 安装最新版本的kube三兄弟 apt install -y kubelet kubeadm kubectl
+
+*修改kubeadm-config文件
+
+apiVersion: kubeadm.k8s.io/v1beta3
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 192.168.0.235 # 替换为node1 ip
+  bindPort: 6443
+nodeRegistration:
+  criSocket: /var/run/dockershim.sock
+  imagePullPolicy: IfNotPresent
+  name: node1 # 注意主机名
+  taints: null
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+apiVersion: kubeadm.k8s.io/v1beta3
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager: {}
+dns: {}
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers # 替换为aliyun源
+kind: ClusterConfiguration
+kubernetesVersion: 1.23.0 # 注意版本号
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+  podSubnet: 10.244.0.0/16 # 增加podSubnet
+scheduler: {}
+
+
+
+*安装k8s群集
+kubeadm init --config kubeadm-config.yaml
+ 
+
+
+*配置访问群集
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+chown $(id -u):$(id -u) $HOME/.kube/config
+ 
+
+
+*部署网络插件
+curl https://docs.projectcalico.org/manifests/calico.yaml -O
+kubectl apply -f calico.yaml
+
+
+
+*删除master污点，使其能承载工作负载
+kubectl taint node node1 node-role.kubernetes.io/master-
+
+
+
+*安装NFS Server
+apt install -y nfs-kernel-server
+
+创建共享目录,设置共享权限
+mkdir /data
+chmod 777 -R /data
+mkdir /data/mysql
+mkdir /data/elasticsearch
+chmod 777 -R /data/elasticsearch
+
+修改配置文件
+nano /etc/exports
+
+/data *(rw,no_root_squash)
+
+重启服务（如果节点重启之后，共享丢失，请重做此步）
+systemctl restart nfs-server
+
+设置开机自启
+systemctl enable nfs-server
+systemctl enable kubelet
+
+
+*加载实验目录
+git clone https://github.com/cloudzun/k8slab/
+cd k8slab/
+git branch -a
+git checkout v1.23
+
+
+*启用ingress
+
+进入svc文件夹
+cd svc
+
+nano ingress-nginx.yaml
+ #修改副本为1，如果常规部署忽略此步骤
+ spec:
+  replicas: 1 # 双副本
+
+kubectl apply -f ingress-nginx.yaml
+
+查看ingress-nginx的pod
+kubectl get pods -n ingress-nginx -o wide
+
+
+
+*安装NFS CSI
+
+进入csi文件夹
+kubectl apply -f ./
+
+查看csi对应pod
+kubectl get pod -n kube-system -o wide | grep csi
+  *等待csi-nfs相关pod就绪之后再进行后续步骤
+
+切换storage到修改StorageClass定义文件 （需要替换NFS服务器ip地址）
+
+nano nfs-sc.yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-csi
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.0.123 # 指定nfs服务器地址
+  share: /data
+reclaimPolicy: Retain  # only retain is supported
+volumeBindingMode: Immediate
+mountOptions:
+  - hard
+  - nfsvers=4.1
+
+创建SC 
+kubectl apply -f nfs-sc.yaml
+ 
+查看sc 
+kubectl get sc -o wide
+
+
+*安装metrics-server
+
+切换到perfmon目录执行metrics-server的文件
+
+安装metrics-server
+kubectl apply -f metrics-server.yaml
+
+查看pod
+kubectl get pod -n kube-system | grep metrics-server
+
+
+*安装istio 
+
+安装istio 1.5.2
+wget https://chengzhstor.blob.core.windows.net/k8slab/istio-1.5.2-linux.tar.gz
+tar xf istio-1.5.2-linux.tar.gz
+cd istio-1.5.2/
+export PATH="$PATH:/root/istio-1.5.2/bin"
+istioctl manifest generate --set profile=demo --set values.global.jwtPolicy=first-party-jwt > ./deploy.yaml
+istioctl manifest apply --set profile=demo
+
+查看 istio 相关pod：
+kubectl get pods -n istio-system
+
+查看 crd：
+kubectl get crd | grep istio
+
+查看api资源
+kubectl api-resources | grep istio
+
+查看 istio 服务状态：
+kubectl get svc -n istio-system 
+
+将kiali jaeger和grafana的nordport端口暴露出来
+kubectl patch svc -n istio-system prometheus -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service prometheus --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31120}]'
+kubectl patch svc -n istio-system grafana  -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service grafana --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31124}]'
+kubectl patch svc -n istio-system jaeger-query -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service jaeger-query --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31122}]'
+kubectl patch svc -n istio-system kiali -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service kiali --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31123}]'
+
+
+
+*可选安装helm
+wget https://chengzhstor.blob.core.windows.net/k8slab/helm-v3.3.0-linux-amd64.tar.gz
+tar xf helm-v3.3.0-linux-amd64.tar.gz
+mv linux-amd64/helm /usr/bin/
+
+查看helm版本
+helm version
+
