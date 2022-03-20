@@ -187,7 +187,7 @@ echo “source <(kubectl completion bash)” >> ~/.bashrc
 
 
 
-lab 2 在ubuntu 18.04上安装K8S （可选）
+lab 2 在ubuntu 20.04上安装K8S 
 准备工作（所有节点操作）
 
 1. 配置主机名
@@ -208,7 +208,7 @@ nano /etc/hosts
 
 3. 修改apt源
 sudo nano /etc/apt/sources.list
-# 清空/etc/apt/sources.list，并添加如下内容,如果是在阿里云上的vm，这步可以跳过
+# 清空/etc/apt/sources.list，并添加如下内容,如果云上的vm，这步可以跳过
 
 deb http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
 deb-src http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
@@ -253,7 +253,8 @@ ip_vs_sh
 nf_conntrack_ipv4
 EOF
 
-for i in br_netfilter ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack_ipv4;do modprobe $i;done
+for i in br_netfilter ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack_ipv4;do modprobe $i;done 
+# 华为云主机可能会报错，忽略
 
 
 7. 安装docker
@@ -296,7 +297,7 @@ apt update -y
 
 apt-cache madison kubelet
 
-apt install -y kubelet=1.19.0-00 kubeadm=1.19.0-00  kubectl=1.19.0-00
+apt install -y kubelet=1.23.0-00 kubeadm=1.23.0-00  kubectl=1.23.0-00
 
 # 安装当前最新版本 apt install -y kubelet kubeadm kubectl
 # 如果有key和签名方面的报错，尝试使用 apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 8B57C5C2836F4BEB 进行排错
@@ -307,7 +308,7 @@ kubeadm config print init-defaults  > kubeadm-config.yaml
 
 nano kubeadm-config.yaml
 
-apiVersion: kubeadm.k8s.io/v1beta2
+apiVersion: kubeadm.k8s.io/v1beta3
 bootstrapTokens:
 - groups:
   - system:bootstrappers:kubeadm:default-node-token
@@ -318,33 +319,31 @@ bootstrapTokens:
   - authentication
 kind: InitConfiguration
 localAPIEndpoint:
-  advertiseAddress: 192.168.0.180
+  advertiseAddress: 192.168.0.235 # 替换为node1 ip
   bindPort: 6443
 nodeRegistration:
   criSocket: /var/run/dockershim.sock
-  name: cka-master
-  taints:
-  - effect: NoSchedule
-    key: node-role.kubernetes.io/master
+  imagePullPolicy: IfNotPresent
+  name: node1 # 注意主机名
+  taints: null
 ---
 apiServer:
   timeoutForControlPlane: 4m0s
-apiVersion: kubeadm.k8s.io/v1beta2
+apiVersion: kubeadm.k8s.io/v1beta3
 certificatesDir: /etc/kubernetes/pki
 clusterName: kubernetes
 controllerManager: {}
-dns:
-  type: CoreDNS
+dns: {}
 etcd:
   local:
     dataDir: /var/lib/etcd
-imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers
+imageRepository: registry.cn-hangzhou.aliyuncs.com/google_containers # 替换为aliyun源
 kind: ClusterConfiguration
-kubernetesVersion: v1.18.13
+kubernetesVersion: 1.23.0 # 注意版本号
 networking:
   dnsDomain: cluster.local
   serviceSubnet: 10.96.0.0/12
-  podSubnet: 10.244.0.0/16
+  podSubnet: 10.244.0.0/16 # 增加podSubnet
 scheduler: {}
 
 #提前拖映像
@@ -374,11 +373,8 @@ kubectl apply -f calico.yaml
 
 节点上加入到k8s
 
-
 设置kubelet自动启动
 systemctl enable kubelet
-
-
 
 
 
