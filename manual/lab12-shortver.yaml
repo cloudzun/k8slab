@@ -2399,7 +2399,7 @@ kubectl top pod | sort -k3 -nr | head -1 | awk '{print $2}' >/tmp/memtop.txt
 
 
 Lab 2 HPA
-修改kube-controller-manager.yaml，增加启动参数
+# 修改kube-controller-manager.yaml，增加启动参数
 nano /etc/kubernetes/manifests/kube-controller-manager.yaml 
 
     - --horizontal-pod-autoscaler-use-rest-clients=true
@@ -2608,10 +2608,50 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm fetch prometheus-community/kube-prometheus-stack  
 
 安装kube-prometheus-stack
-tar xf kube-prometheus-stack-13.9.1.tgz
-
+tar xf kube-prometheus-stack-34.1.0.tgz  #截至2022-3-18，最新版本是34.1.0
 cd kube-prometheus-stack
 
+# 国内安装获取安装源方法
+wget https://chengzhstor.blob.core.windows.net/k8slab/kube-prometheus-stack-34.1.0.tgz
+tar xf kube-prometheus-stack-34.1.0.tgz  #截至2022-3-18，最新版本是34.1.0
+cd kube-prometheus-stack
+
+参照以下步骤修改ingress-nginx镜像源
+nano values.yaml
+
+ctrl \
+
+k8s.gcr.io/ingress-nginx
+
+chengzh
+
+y
+
+样例
+ image:
+        repository: chengzh/kube-webhook-certgen
+        tag: v1.1.1
+        # sha: "" 注释掉sha
+        pullPolicy: IfNotPresent
+
+参照以下步骤修改kube-state-metrics镜像源
+nano charts/kube-state-metrics/values.yaml
+
+ctrl \
+
+k8s.gcr.io/kube-state-metrics
+
+chengzh
+
+y
+
+样例
+image:
+  repository: chengzh/kube-state-metrics
+  tag: v2.4.1
+  pullPolicy: IfNotPresent
+
+安装release
 helm install kube-prometheus-stack -n prom ./
 
 查看pod和svc
@@ -2628,8 +2668,12 @@ http://nodepublicip:31121
 用户名：admin 
 密码：prom-operator
 
+# 卸载release
+# helm uninstall kube-prometheus-stack  -n prom
+
 
 Lab 5 安装EFK实现日志收集分析解决方案
+
 #在每一个节点上执行以下命令修改内核参数
 # sudo sysctl -w vm.max_map_count=262144
 
@@ -2639,10 +2683,8 @@ kubectl create ns efk
 在NFS服务器上创建存放pvc的文件夹
 mkdir /data/elasticsearch
 
-下载Helm仓库源码
-wget -O helm-charts.tgz  https://github.com/elastic/helm-charts/archive/7.6.2.tar.gz
-tar -zxvf helm-charts.tgz
-cd helm-charts-7.6.2
+设置共享权限
+chmod 777 -R /data/elasticsearch
 
 使用以下命令行创建Elasticsearch使用的PV
 
@@ -2663,6 +2705,19 @@ spec:
     server: nfs # 此处使用NFS服务器地址
 
 kubectl create -f es-pv.yaml
+# kubectl apply -f k8slab/perfmon/es-pv.yaml
+# kubectl create -f https://raw.githubusercontent.com/cloudzun/k8slab/main/perfmon/es-pv.yaml
+
+下载Helm仓库源码
+wget -O helm-charts.tgz  https://github.com/elastic/helm-charts/archive/7.9.2.tar.gz
+tar -zxvf helm-charts.tgz
+cd helm-charts-7.9.2
+
+国内替代方案
+wget -O helm-charts.tgz  https://chengzhstor.blob.core.windows.net/k8slab/helm-charts-7.9.2.tar.gz
+tar -zxvf helm-charts.tgz
+cd helm-charts-7.9.2
+
 
 更改elasticsearch副本数，此处选用最低副本数
 nano elasticsearch/values.yaml
@@ -2671,6 +2726,15 @@ nano elasticsearch/values.yaml
 
 安装elasticsearch
 helm install es --namespace=efk ./elasticsearch
+
+修改 filebeat api version
+nano filebeat/templates/clusterrole.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+
+nano filebeat/templates/clusterrolebinding.yaml 
+
+apiVersion: rbac.authorization.k8s.io/v1
 
 安装filebeat
 helm install fb --namespace=efk ./filebeat
@@ -2681,7 +2745,7 @@ nano kibana/values.yaml
   service:
     type: NodePort
     port: 5601
-    nodePort: "32001"
+    nodePort: "31126"
 
 安装kibana
 helm install kb --namespace=efk ./kibana
@@ -2691,14 +2755,13 @@ kubectl get pod -n efk
 
 kubectl get svc -n efk
 
-使用32001端口打开kibana界面进行初始化
+
+使用31126端口打开kibana界面进行初始化
 
 卸载服务
 helm uninstall es --namespace=efk ./elasticsearch
 helm uninstall fb --namespace=efk ./filebeat
 helm uninstall kb --namespace=efk ./kibana
-
-
 备注：
 EFK步骤
 https://www.cnblogs.com/leozhanggg/p/12700363.html
