@@ -107,15 +107,15 @@ helm version
 
 *安装istio 
 
-安装istio 1.5.2
+安装istio 1.13.2
 
 
-wget https://chengzhstor.blob.core.windows.net/k8slab/istio-1.5.2-linux.tar.gz
-tar xf istio-1.5.2-linux.tar.gz
-cd istio-1.5.2/
-export PATH="$PATH:/root/istio-1.5.2/bin"
+wget https://chengzhstor.blob.core.windows.net/k8slab/istio-1.13.2-linux-amd64.tar.gz
+tar xf istio-1.13.2-linux.tar.gz
+cd istio-1.13.2/
+export PATH="$PATH:/root/istio-1.13.2/bin"
 istioctl manifest generate --set profile=demo --set values.global.jwtPolicy=first-party-jwt > ./deploy.yaml
-istioctl manifest apply --set profile=demo
+istioctl install --set profile=demo -y
 
 查看 istio 相关pod：
 kubectl get pods -n istio-system
@@ -128,6 +128,9 @@ kubectl api-resources | grep istio
 
 查看 istio 服务状态：
 kubectl get svc -n istio-system 
+
+安装dashboard
+kubectl apply -f samples/addons
 
 将kiali jaeger和grafana的nordport端口暴露出来
 kubectl patch svc -n istio-system prometheus -p '{"spec":{"type": "NodePort"}}'
