@@ -136,9 +136,9 @@ kubectl apply -f samples/addons
 kubectl patch svc -n istio-system prometheus -p '{"spec":{"type": "NodePort"}}'
 kubectl patch service prometheus --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31120}]'
 kubectl patch svc -n istio-system grafana  -p '{"spec":{"type": "NodePort"}}'
-kubectl patch service grafana --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31124}]'
-kubectl patch svc -n istio-system jaeger-query -p '{"spec":{"type": "NodePort"}}'
-kubectl patch service jaeger-query --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31122}]'
+kubectl patch service grafana --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31121}]'
+kubectl patch svc -n istio-system tracing -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service tracing --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31122}]'
 kubectl patch svc -n istio-system kiali -p '{"spec":{"type": "NodePort"}}'
 kubectl patch service kiali --namespace=istio-system --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":31123}]'
 
