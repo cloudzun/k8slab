@@ -1,0 +1,27 @@
+# 下载并安装sealos, sealos是个golang的二进制工具，直接下载拷贝到bin目录即可, release页面也可下载
+wget -c https://sealyun-home.oss-cn-beijing.aliyuncs.com/sealos/latest/sealos && \
+    chmod +x sealos && mv sealos /usr/bin 
+
+# 下载离线资源包
+wget -c https://sealyun.oss-cn-beijing.aliyuncs.com/05a3db657821277f5f3b92d834bbaf98-v1.22.0/kube1.22.0.tar.gz
+
+
+# 安装一个单master两node的kubernetes集群
+sealos init --passwd '2wsx#EDC' \
+	--master 192.168.0.103   \
+	--node 192.168.0.117  --node 192.168.0.20 \
+	--pkg-url /root/kube1.22.0.tar.gz \
+	--version v1.22.0
+
+
+#清理
+sealos clean --all 
+
+
+#适用场景
+1.需要快速安装k8s测试群集(可能版本是次新的)
+2.离线安装
+
+
+
+https://github.com/fanux/sealos
