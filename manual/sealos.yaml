@@ -8,9 +8,10 @@ wget -c https://sealyun.oss-cn-beijing.aliyuncs.com/05a3db657821277f5f3b92d834bb
 
 # 安装一个单master两node的kubernetes集群
 sealos init --passwd '2wsx#EDC' \
-	--master 192.168.0.103   \
-	--node 192.168.0.117  --node 192.168.0.20 \
+	--master 192.168.0.121   \
+	--node 192.168.0.212  --node 192.168.0.237 \
 	--pkg-url /root/kube1.22.0.tar.gz \
+        --podcidr 10.244.0.0/16  \
 	--version v1.22.0
 
 
