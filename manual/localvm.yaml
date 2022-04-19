@@ -17,6 +17,24 @@ nano /etc/fstab
 apt install network-manager -y 
 
 修改配置文件
+nano /etc/netplan/01-netcfg.yaml
+
+network:
+    version: 2
+    renderer: NetworkManager
+    ethernets:
+        eth0:
+            dhcp4: no #设置成no
+        eth1:
+            dhcp4: true
+        eth2:
+            dhcp4: true
+        eth3:
+            dhcp4: true
+        eth4:
+            dhcp4: true
+
+
 nano /etc/netplan/00-installer-config.yaml
 
 network:
@@ -29,7 +47,8 @@ network:
       gateway4: 192.168.1.1 # 网关地址
       nameservers:
         addresses: [192.168.1.1]  # DNS服务器地址，多个DNS服务器地址需要用英文逗号分隔开，可不配置
-  
+ 
+
 使配置生效
 netplan apply
 
