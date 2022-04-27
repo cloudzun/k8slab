@@ -951,7 +951,7 @@ Lab 15 静态Pod
 查看kube-system里的pod
 kubectl get pods -n kube-system -o wide
 
-get pods -n kube-system -o wide | grep cka-0001
+get pods -n kube-system -o wide | grep node1
  *重点关注四个组件对应的pod
 
 查看静态pod的yaml文件
