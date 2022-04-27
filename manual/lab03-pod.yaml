@@ -1,3 +1,12 @@
+克隆实验脚本
+
+git clone https://github.com/cloudzun/k8slab/
+
+cd k8slab/
+
+git branch -a
+
+git checkout v1.23
 
 Lab 1 极简创建Pod
 
