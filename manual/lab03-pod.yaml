@@ -968,13 +968,13 @@ kubectl get pod -o wide
 
 退出当前目录，将某个yaml文件拷贝到另一个节点中
 cd
-scp nginx.yaml 192.168.0.114:/etc/kubernetes/manifests/
+scp nginx.yaml node3:/etc/kubernetes/manifests/
 
 查看新启动的静态pod
 kubectl get pods  -o wide
 
 尝试删除静态pod
-kubectl delete pod nginx-cka-0002
+kubectl delete pod nginx-node3
 
 查看pod列表，证明是无法删除的
 kubectl get pod -o wide
