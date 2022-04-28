@@ -416,3 +416,35 @@ kubectl get cronjob hello
 kubectl delete -f cronjob.yaml
 
 
+Lab 5 DaemonSet
+
+使用以下范例，创建deamonset yaml
+nano katacoda-daemonsets.yaml
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
+启用DaemonSet
+kubectl apply -f katacoda-daemonsets.yaml 
+
+观察pod
+kubectl get pods -o wide
+ *每个节点都有一个katacoda，master节点暂时还没有
+
