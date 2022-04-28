@@ -136,6 +136,29 @@ spec:
 使用示例文件创建yaml文件
 nano deployment.yaml
 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: webserver
+  name: webserver
+spec:
+  replicas: 1 # 定义副本数量
+  selector: # 通过lable定义所管理的pod
+    matchLabels:
+      app: webserver
+  strategy: {} # 定义滚动升级的策略
+  template: # 此处以下替换成pod yaml文件，注意缩进
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: webserver # 使用相同的lable和deployment保持对仗工整
+    spec:
+      containers:
+      - image: nginx:1.7.9
+        name: nginx
+        resources: {}
+
 创建deployment
 kubectl apply -f deployment.yaml
 
@@ -196,8 +219,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:  # 滚动更新策略
-      maxUnavailable: 2 # 先下线两个
-      maxSurge: 0
+      maxUnavailable: 0 # 先下线两个
+      maxSurge: 2
   template:
     metadata:
       name: webserver
@@ -205,90 +228,11 @@ spec:
       labels:
         app: webserver-strategy
     spec:
-      dnsPolicy: Default
-      hostNetwork: false
-      restartPolicy: Always
-      hostAliases:
-      - ip: "192.168.0.181"
-        hostnames:
-        - "cka01"
-      - ip: "192.168.0.41"
-        hostnames:
-        - "cka02"
-      - ip: "192.168.0.241"
-        hostnames:
-        - "cka03"
-      volumes:
-      - name: web-root
-        hostPath:
-          path: /data
-      - name: web-path
-        emptyDir: 
-      initContainers:
-      - name: pullcode
-        image: busybox
-        volumeMounts:
-        - name: web-path
-          mountPath: /data
-        command:
-        - /bin/sh
-        - -c
-        - "echo hello > /data/index.html; touch /data/healthy"
       containers:
-      - name: nginx
-        image: nginx:1.7.9
-        imagePullPolicy: Always
-        resources:
-          requests:
-            cpu: "0.1"
-            memory: "32Mi"
-          limits:
-            cpu: "0.2"
-            memory: "64Mi"
-        startupProbe:
-          exec:
-            command:
-              - /bin/sh
-              - -c
-              - "cat /usr/share/nginx/html/healthy"
-          initialDelaySeconds: 5 
-          periodSeconds: 1
-          timeoutSeconds: 1
-          failureThreshold: 18
-          successThreshold: 1 
-        livenessProbe:
-          tcpSocket:
-            port: 80
-          periodSeconds: 10
-          timeoutSeconds: 1
-          failureThreshold: 3
-          successThreshold: 1 
-        readinessProbe:
-          httpGet:
-            port: 80
-            path: /
-          periodSeconds: 1
-          timeoutSeconds: 1
-          failureThreshold: 3
-          successThreshold: 1 
-        volumeMounts:
-        - name: web-root
-          mountPath: /data
-        - name: web-path
-          mountPath: /usr/share/nginx/html
-        env:
-        - name: mysqlhost
-          value: "10.96.0.110"
-        - name: mysqlport
-          value: "3306"
-        - name: mysqldb
-          value: "wordpress"
-        - name: mysqluser
-          value: "root"
-        ports:
-        - name: web-port
-          containerPort: 80
-          protocol: TCP
+      - image: nginx:1.7.9
+        name: nginx
+        resources: {}
+
 
 创建deployment
 kubectl apply -f webserver-strategy.yaml 
@@ -366,88 +310,11 @@ spec:
       labels:
         app: webserver
     spec:
-      dnsPolicy: Default
-      hostNetwork: false
-      restartPolicy: Always
-      hostAliases:
-      - ip: "192.168.0.181"
-        hostnames:
-        - "cka01"
-      - ip: "192.168.0.41"
-        hostnames:
-        - "cka02"
-      - ip: "192.168.0.241"
-        hostnames:
-        - "cka03"
-      volumes:
-      - name: web-root
-        hostPath:
-          path: /data
-      - name: web-path
-        emptyDir: 
-      initContainers:
-      - name: pullcode
-        image: busybox
-        volumeMounts:
-        - name: web-path
-          mountPath: /data
-        command:
-        - /bin/sh
-        - -c
-        - "echo hello > /data/index.html; touch /data/healthy"
       containers:
       - name: nginx
         image: nginx:1.7.9
-        imagePullPolicy: Always
-        resources:
-          requests:
-            cpu: "0.1"
-            memory: "32Mi"
-          limits:
-            cpu: "0.2"
-            memory: "64Mi"
-        startupProbe:
-          exec:
-            command:
-              - /bin/sh
-              - -c
-              - "cat /usr/share/nginx/html/healthy"
-          initialDelaySeconds: 5 
-          periodSeconds: 1
-          timeoutSeconds: 1
-          failureThreshold: 18
-          successThreshold: 1 
-        livenessProbe:
-          tcpSocket:
-            port: 80
-          periodSeconds: 10
-          timeoutSeconds: 1
-          failureThreshold: 3
-          successThreshold: 1 
-        readinessProbe:
-          httpGet:
-            port: 80
-            path: /
-          periodSeconds: 1
-          timeoutSeconds: 1
-          failureThreshold: 3
-          successThreshold: 1 
-        volumeMounts:
-        - name: web-root
-          mountPath: /data
-        - name: web-path
-          mountPath: /usr/share/nginx/html
-        env:
-        - name: mysqlhost
-          value: "10.96.0.110"
-        - name: mysqlport
-          value: "3306"
-        - name: mysqldb
-          value: "wordpress"
-        ports:
-        - name: web-port
-          containerPort: 80
-          protocol: TCP
+        resources: {}
+
 
 创建StatefulSet
 kubectl apply -f webserver.yaml
