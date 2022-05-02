@@ -30,10 +30,14 @@ kubectl apply -f katacoda.yaml
 
 观察pod
 kubectl get pods -o wide
- *每个节点都有一个katacoda，master节点暂时还没有
+ *master节点不运行katacoda负载
 
 给node3打标签
 kubectl label node node3 proxy=enable
+
+观察pod
+kubectl get pods -o wide
+  *pod的状态没有变化
 
 使用以下范例，更新katacoda
 nano katacoda3.yaml
@@ -67,7 +71,7 @@ kubectl apply -f katacoda3.yaml
 
 观察pod
 kubectl get pods -o wide
- *node2节点上的pod被终止了
+ *node2节点上的pod被终止了，所有的负载被转到node3上
 
 查看node3节点详情
 kubectl describe nodes node3
@@ -100,32 +104,7 @@ kubectl delete -f katacoda3.yaml
 
 Lab 2 taint 和 tolerations
 
-使用范例创建yaml
-nano katacoda.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    app: katacoda
-  name: katacoda
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: katacoda
-  strategy: {}
-  template:
-    metadata:
-      labels:
-        app: katacoda
-    spec:
-      containers:
-      - image: katacoda/docker-http-server
-        name: docker-http-server
-        resources: {}
-
-运行deployment
+再次运行deployment
 kubectl apply -f katacoda.yaml 
 
 查看pod列表
@@ -140,7 +119,7 @@ kubectl describe node node3
 
 查看pod列表
 kubectl get pod -o wide
-  *可以看到该节点上的pod已经被清空
+  *可以看到3个pod全部运行在另一个节点
 
 使用以下范例，增加容忍，更新deployment，
 nano katacoda2.yaml
