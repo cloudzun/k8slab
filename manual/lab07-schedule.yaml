@@ -30,8 +30,8 @@ kubectl apply -f katacoda-daemonsets.yaml
 kubectl get pods -o wide
  *每个节点都有一个katacoda，master节点暂时还没有
 
-给k8s03打标签
-kubectl label node k8s03 proxy=enable
+给node3打标签
+kubectl label node node3 proxy=enable
 
 使用以下范例，更新deamonset
 nano katacoda-daemonsets2.yaml
@@ -63,22 +63,22 @@ kubectl apply -f katacoda-daemonsets2.yaml
 
 观察pod
 kubectl get pods -o wide
- *k8s02节点上的pod被终止了
+ *node2节点上的pod被终止了
 
-查看k8s03节点详情
-kubectl describe nodes k8s03
+查看node3节点详情
+kubectl describe nodes node3
   *特别留意labels字段
 
 删除k8s03的标签
-kubectl label node k8s03 proxy-
+kubectl label node node3 proxy-
 
 再次查看k8s03节点详情
-kubectl describe nodes k8s03
+kubectl describe nodes node3
   *特别留意labels字段
 
 再次观察pod
 kubectl get pods -o wide
- *k8s03节点上的pod也被终止了
+ *node3节点上的pod也被终止了
 
 清理daemonset
 kubectl delete -f katacoda-daemonsets2.yaml 
@@ -87,13 +87,13 @@ Lab 2 Taint
 
 查看pod列表
 kubectl get pod -o wide
-  *找到当前负载较高的节点，比如k8s03
+  *找到当前负载较高的节点，比如node3
 
-给k8s03打污点
-kubectl taint node k8s03 aa=bb:NoExecute
+给node3打污点
+kubectl taint node node3 aa=bb:NoExecute
 
 查看节点taints
-kubectl describe node k8s03
+kubectl describe node node3
 
 查看pod列表
 kubectl get pod -o wide
@@ -163,11 +163,11 @@ spec:
 更新配置
 kubectl apply -f katacoda2.yaml
 
-查看pod列表，确认pod在k8s03节点上重建
+查看pod列表，确认pod在node3节点上重建
 kubectl get pods -o wide
 
 删除现有污点
-kubectl taint node k8s03 aa-
+kubectl taint node node3 aa-
 
 查看pod列表
 kubectl get pods -o wide
@@ -179,11 +179,11 @@ kubectl delete -f katacoda2.yaml
 Lab 3 使master能够承载工作负载
 
 查看master taints
-kubectl describe node k8s01
+kubectl describe node node1
  *特别留意 node-role.kubernetes.io/master
 
 删除master污点，使其能承载工作负载
-kubectl taint node k8s01 node-role.kubernetes.io/master-
+kubectl taint node node1 node-role.kubernetes.io/master-
 
 运行deployment
 kubectl apply -f katacoda.yaml
@@ -211,4 +211,4 @@ kubectl get pod -o wide
 
 备注：
 恢复master的taint
-kubectl taint node k8s01 node-role.kubernetes.io/master:NoSchedule
+kubectl taint node node1 node-role.kubernetes.io/master:NoSchedule
