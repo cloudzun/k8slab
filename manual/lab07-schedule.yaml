@@ -193,8 +193,13 @@ kubectl drain node2
 清空node2 
 kubectl drain node2  --ignore-daemonsets
 
+查看节点信息
+kubectl get node -o wide
+  *node2的status Ready,SchedulingDisabled
+
 查看pod列表
 kubectl get pods -o wide
+  *pod全部被迁移到node3
 
 扩展katacoda副本数
 kubectl scale deployment katacoda --replicas=6
@@ -242,6 +247,29 @@ kubectl get pods -o wide
 清理deployment
 kubectl delete -f katacoda.yaml 
 
+使用以下范例创建deamonsets
+nano katacoda-daemonsets.yaml
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+
 运行daemonset
 kubectl apply -f katacoda-daemonsets.yaml 
 
@@ -257,6 +285,13 @@ kubectl get pod -o wide
 
 恢复master的taint
 kubectl taint node node1 node-role.kubernetes.io/master:NoSchedule
+
+再次运行daemonset
+kubectl apply -f katacoda-daemonsets.yaml 
+
+查看pod列表
+kubectl get pod -o wide
+  *node1上没有deamonsets pod
 
 
 Lab 5 部署能够运行在master上的daemonset
