@@ -199,23 +199,26 @@ kubectl get pods -o wide
 扩展katacoda副本数
 kubectl scale deployment katacoda --replicas=6
 
-恢复node2 可调度
-kubectl uncordon node2
-
 查看pod列表
 kubectl get pods -o wide
+  *新增负载全在node3上
+
+恢复node2 可调度
+kubectl uncordon node2
 
 扩展katacoda副本数
 kubectl scale deployment katacoda --replicas=8
 
 查看pod列表
 kubectl get pods -o wide
+  *新增pod会调度到node2上
 
 收缩katacoda副本数
 kubectl scale deployment katacoda --replicas=4
 
 查看pod列表
 kubectl get pods -o wide
+  *实现node的负载平衡了
 
 清理deployment
 kubectl delete -f katacoda2.yaml
