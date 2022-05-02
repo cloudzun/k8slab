@@ -13,9 +13,11 @@ spec:
       labels:
         app: katacoda-daemonsets
     spec:
-      nodeSelector: # 根据标签匹配调度
-        proxy: enable
       containers:
       - image: katacoda/docker-http-server
         name: docker-http-server
         resources: {}
+      tolerations: # 增加针对master的容忍
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
