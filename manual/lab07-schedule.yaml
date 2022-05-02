@@ -69,10 +69,10 @@ kubectl get pods -o wide
 kubectl describe nodes node3
   *特别留意labels字段
 
-删除k8s03的标签
+删除node3的标签
 kubectl label node node3 proxy-
 
-再次查看k8s03节点详情
+再次查看node3节点详情
 kubectl describe nodes node3
   *特别留意labels字段
 
