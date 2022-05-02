@@ -1,30 +1,32 @@
-Lab 1 DaemonSet
+Lab 1 labels 和 nodeSelector
 
-使用以下范例，创建deamonset yaml
-nano katacoda-daemonsets.yaml
+使用以下范例，创建实例文件
+nano katacoda.yaml
 
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   labels:
-    app: katacoda-daemonsets
-  name: katacoda-daemonsets
+    app: katacoda
+  name: katacoda
 spec:
+  replicas: 3
   selector:
     matchLabels:
-      app: katacoda-daemonsets
+      app: katacoda
+  strategy: {}
   template:
     metadata:
       labels:
-        app: katacoda-daemonsets
+        app: katacoda
     spec:
       containers:
       - image: katacoda/docker-http-server
         name: docker-http-server
         resources: {}
 
-启用DaemonSet
-kubectl apply -f katacoda-daemonsets.yaml 
+创建deployment
+kubectl apply -f katacoda.yaml 
 
 观察pod
 kubectl get pods -o wide
@@ -33,23 +35,25 @@ kubectl get pods -o wide
 给node3打标签
 kubectl label node node3 proxy=enable
 
-使用以下范例，更新deamonset
-nano katacoda-daemonsets2.yaml
+使用以下范例，更新katacoda
+nano katacoda3.yaml
 
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   labels:
-    app: katacoda-daemonsets
-  name: katacoda-daemonsets
+    app: katacoda
+  name: katacoda
 spec:
+  replicas: 3
   selector:
     matchLabels:
-      app: katacoda-daemonsets
+      app: katacoda
+  strategy: {}
   template:
     metadata:
       labels:
-        app: katacoda-daemonsets
+        app: katacoda
     spec:
       nodeSelector: # 根据标签匹配调度
         proxy: enable
@@ -58,8 +62,8 @@ spec:
         name: docker-http-server
         resources: {}
 
-更新DaemonSet
-kubectl apply -f katacoda-daemonsets2.yaml
+更新deployment
+kubectl apply -f katacoda3.yaml
 
 观察pod
 kubectl get pods -o wide
@@ -78,12 +82,23 @@ kubectl describe nodes node3
 
 再次观察pod
 kubectl get pods -o wide
- *node3节点上的pod也被终止了
+ *现有的pod还在，符合定义
 
-清理daemonset
-kubectl delete -f katacoda-daemonsets2.yaml 
+扩展katacoda的副本数量
+kubectl scale deployment katacoda --replicas=4
 
-Lab 2 Taint
+再次观察pod
+kubectl get pods -o wide
+ *现有的pod还在，但是新增的pod始终处于pending状态
+
+查看pending的pod
+kubectl describe pod katacoda-6f88f95457-z7bvs
+ *显示目前没有可用的node "2 node(s) didn't match Pod's node affinity/selector"
+
+清理deployment
+kubectl delete -f katacoda3.yaml 
+
+Lab 2 taint 和 tolerations
 
 使用范例创建yaml
 nano katacoda.yaml
@@ -170,7 +185,7 @@ kubectl taint node node3 aa-
 kubectl get pods -o wide
 
 
-Lab 3 节点调度 drain 和 uncordon
+Lab 3  drain 和 uncordon
 尝试清空node2
 kubectl drain node2
   *查看报错
@@ -239,6 +254,7 @@ kubectl get pod -o wide
 
 恢复master的taint
 kubectl taint node node1 node-role.kubernetes.io/master:NoSchedule
+
 
 Lab 5 部署能够运行在master上的daemonset
 
