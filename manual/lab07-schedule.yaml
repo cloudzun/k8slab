@@ -85,20 +85,6 @@ kubectl delete -f katacoda-daemonsets2.yaml
 
 Lab 2 Taint
 
-查看pod列表
-kubectl get pod -o wide
-  *找到当前负载较高的节点，比如node3
-
-给node3打污点
-kubectl taint node node3 aa=bb:NoExecute
-
-查看节点taints
-kubectl describe node node3
-
-查看pod列表
-kubectl get pod -o wide
-  *可以看到该节点上的pod已经被清空
-
 使用范例创建yaml
 nano katacoda.yaml
 
@@ -127,8 +113,19 @@ spec:
 运行deployment
 kubectl apply -f katacoda.yaml 
 
-查看运行效果
-kubectl get pods -o wide
+查看pod列表
+kubectl get pod -o wide
+  *找到当前负载较高的节点，比如node3
+
+给node3打污点
+kubectl taint node node3 aa=bb:NoExecute
+
+查看节点taints
+kubectl describe node node3
+
+查看pod列表
+kubectl get pod -o wide
+  *可以看到该节点上的pod已经被清空
 
 使用以下范例，增加容忍，更新deployment，
 nano katacoda2.yaml
@@ -172,11 +169,44 @@ kubectl taint node node3 aa-
 查看pod列表
 kubectl get pods -o wide
 
+
+Lab 3 节点调度 drain 和 uncordon
+尝试清空node2
+kubectl drain node2
+  *查看报错
+
+清空node2 
+kubectl drain node2  --ignore-daemonsets
+
+查看pod列表
+kubectl get pods -o wide
+
+扩展katacoda副本数
+kubectl scale deployment katacoda --replicas=6
+
+恢复node2 可调度
+kubectl uncordon node2
+
+查看pod列表
+kubectl get pods -o wide
+
+扩展katacoda副本数
+kubectl scale deployment katacoda --replicas=8
+
+查看pod列表
+kubectl get pods -o wide
+
+收缩katacoda副本数
+kubectl scale deployment katacoda --replicas=4
+
+查看pod列表
+kubectl get pods -o wide
+
 清理deployment
 kubectl delete -f katacoda2.yaml
 
 
-Lab 3 使master能够承载工作负载
+Lab 4 使master能够承载工作负载
 
 查看master taints
 kubectl describe node node1
@@ -207,8 +237,48 @@ kubectl delete -f katacoda-daemonsets.yaml
 kubectl get pod -o wide
   *曲终人散
 
+恢复master的taint
+kubectl taint node node1 node-role.kubernetes.io/master:NoSchedule
+
+Lab 5 部署能够运行在master上的daemonset
+
+使用以下范例，增加针对master的容忍，更新deployment，
+nano katacoda-daemonsets2.yaml 
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: katacoda-daemonsets
+  name: katacoda-daemonsets
+spec:
+  selector:
+    matchLabels:
+      app: katacoda-daemonsets
+  template:
+    metadata:
+      labels:
+        app: katacoda-daemonsets
+    spec:
+      containers:
+      - image: katacoda/docker-http-server
+        name: docker-http-server
+        resources: {}
+      tolerations: # 增加针对master的容忍
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+
+创建deployment
+kubectl apply -f katacoda-daemonsets2.yaml
+
+观察pod分布
+kubectl get pod -o wide
+
+清理daemonset
+kubectl delete -f katacoda-daemonsets2.yaml 
 
 
 备注：
-恢复master的taint
-kubectl taint node node1 node-role.kubernetes.io/master:NoSchedule
+删除所有master污点，使其能承载工作负载
+kubectl taint nodes --all node-role.kubernetes.io/master-
