@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: wordpress-ingress
   namespace: blog
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
   rules:
   - host: wordpress.example.com
@@ -12,6 +14,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: wordpress-svc 
+            name: wordpress-nodeport
             port:
               number: 80
+
