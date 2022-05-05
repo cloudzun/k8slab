@@ -14,7 +14,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: wordpress-nodeport
+            name: wordpress-svc
             port:
               number: 80
 
