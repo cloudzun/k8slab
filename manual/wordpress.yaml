@@ -107,8 +107,27 @@ spec:
 
 kubectl apply -f wordpress.deploy.yaml 
 
-创建wordpress svc
+创建wordpress-svc
 nano wordpress.svc.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+ name: wordpress-svc
+ namespace: blog
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: wordpress
+  type: ClusterIP
+  
+kubectl apply -f wordpress.svc.yaml 
+
+创建wordpress-nodeport
+nano wordpress.svc2.yaml
 
 apiVersion: v1
 kind: Service
@@ -125,7 +144,7 @@ spec:
     app: wordpress
   type: NodePort
 
-kubectl apply -f wordpress.svc.yaml 
+kubectl apply -f wordpress.svc2.yaml 
 
 查看blog命名空间下的pod和svc,查看对象是否都创建成功
 
