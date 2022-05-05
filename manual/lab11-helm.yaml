@@ -1,4 +1,207 @@
+Lab 1 使用Helm安装redis
 
+安装helm
+wget https://chengzhstor.blob.core.windows.net/k8slab/helm-v3.3.0-linux-amd64.tar.gz
+
+tar xf helm-v3.3.0-linux-amd64.tar.gz
+
+mv linux-amd64/helm /usr/bin/
+
+替代安装办法
+
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+
+chmod 700 get_helm.sh
+
+./get_helm.sh
+
+查看helm版本
+helm version
+
+添加仓库并找到redis chart
+helm repo add stable https://charts.helm.sh/stable
+  *这一步时间可能比较久，请耐心等待
+
+查看已经添加的仓库
+helm repo list
+
+搜索仓库有哪些chart
+helm search repo stable
+
+更新仓库列表到本地
+helm repo update
+
+搜索redis
+helm search repo redis
+
+查看redis chart详情
+helm show chart stable/redis
+
+查看redis values（values：相当于chart的配置文件）
+helm show values stable/redis
+
+redis chart安装/升级/回滚/卸载
+建立单master的配置文件
+nano only-master.values
+
+## Cluster settings
+cluster:
+  enabled: false
+
+## Redis pod Security Context
+securityContext:
+  enabled: false
+
+## Use password authentication
+usePassword: true
+## Redis password (both master and slave)
+password: "admin"
+
+## Redis Master parameters
+master:
+  persistence:
+    enabled: false
+
+--dry-run一下，看看生成出来的yaml文件是否存在问题
+helm install redis-demo stable/redis -f ./only-master.values --dry-run
+
+如果没有问题，则进行实际的安装
+helm install redis-demo stable/redis -f ./only-master.values
+
+安装成功之后，可以登录redis进行操作，做进一步的校验
+redis-cli -h `kubectl get svc redis-demo-master -o=jsonpath="{.spec.clusterIP}"` -a admin
+set name zhangsan
+get name
+info replication
+ *可以看到这时候没有slave连接
+
+建立master-slave配置文件
+nano master-slave.values
+
+## Cluster settings
+cluster:
+  enabled: true
+  slaveCount: 1
+
+securityContext:
+  enabled: false
+
+## Use password authentication
+usePassword: true
+password: "admin"
+
+## Mount secrets as files instead of environment variables
+usePasswordFile: false
+
+## Redis Master parameters
+master:
+  persistence:
+    enabled: false
+
+## Redis Slave properties
+slave:
+  persistence:
+    enabled: false
+
+
+--dry-run一下，看看生成出来的yaml文件是否存在问题; 由于在系统中已经有redis-demo的release，因此使用upgrade来进行升级
+helm upgrade redis-demo stable/redis -f ./master-slave.values --dry-run
+helm upgrade redis-demo stable/redis -f ./master-slave.values
+
+检查slave是否安装成功，以及是否同步成功
+redis-cli -h `kubectl get svc redis-demo-slave -o=jsonpath="{.spec.clusterIP}"` -a admin
+get name
+
+回滚至单master模式,查看部署历史
+helm history redis-demo
+
+回滚到对应的单master版本
+helm rollback redis-demo 1
+
+再连接slave已经不成功了
+redis-cli -h `kubectl get svc redis-demo-slave -o=jsonpath="{.spec.clusterIP}"` -a admin
+
+只有master能连接
+redis-cli -h `kubectl get svc redis-demo-master -o=jsonpath="{.spec.clusterIP}"` -a admin
+
+测试一下
+get age
+
+卸载redis-demo
+helm uninstall redis-demo
+
+Lab 2 使用Helm安装wordpress
+
+在NFS服务器上创建存放pvc的文件夹
+mkdir /data/mariadb-pv
+mkdir /data/wordpress-pv
+chmod 777 -R /data/mariadb-pv
+chmod 777 -R /data/wordpress-pv
+
+使用范例创建pv定义
+nano blogpv.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mariadb-pv
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  #storageClassName: nfs-csi
+  nfs:
+    path: /data/mariadb-pv
+    server: 192.168.1.202
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  #storageClassName: nfs-csi
+  nfs:
+    path: /data/wordpress-pv
+    server: 192.168.1.202
+
+创建pv
+kubectl apply -f blogpv.yaml
+
+安装chart
+helm install wordpress stable/wordpress
+查看pod
+kubectl get pod
+
+查看服务
+kubectl get svc
+
+将wordpress服务发布在30080端口
+kubectl patch svc  wordpress  -p '{"spec":{"type": "NodePort"}}'
+kubectl patch service wordpress  --type='json' --patch='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":30080}]'
+
+访问wordprss
+http://node1:30080
+
+查询wordkpress用户名和密码
+echo Username: user
+echo Password: $(kubectl get secret --namespace default wordpress -o jsonpath="{.data.wordpress-password}" | base64 --decode)
+  *记录密码
+
+访问wordprss管理界面
+http://node1:30080/admin
+
+卸载wordpress
+helm uninstall wordpress
+
+
+Lab 3 Helm-Chart
 
 在github中创建仓库
 
@@ -24,10 +227,6 @@ git commit -m "nginx chart"
 git push origin master
 
 设置仓库的github pages，在仓库的settings进行设置
-
-
-
-
 
 添加chart仓库
 helm repo add myrepo https://www.cloudzun.com/helm-chart
