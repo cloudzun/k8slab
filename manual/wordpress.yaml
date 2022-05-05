@@ -1,10 +1,10 @@
 实战演练
 
 ver 1.0 基本构建
-ver 2.0 为后端配置数据持久化
+ver 2.0 为后端配置数据持久化 (需要参照storage章节配置好nfs和csi以及storageclass)
 ver 3.0 为后端配置ConfigMap和Secret
-ver 4.0 为前端配置ingress
-ver 5.0 为前段配置横向扩缩容
+ver 4.0 为前端配置ingress （需要参照svc章节配置好ingress）
+ver 5.0 为前段配置横向扩缩容（需要参照perfmon章节启用metric server）
 ver 6.0 配置监控
 
 ver 1.0 基本构建
@@ -137,77 +137,6 @@ kubectl get svc -n blog
 
 
 ver 2.0 为后端配置数据持久化
-
-安装NFS服务器
-  *以centos为例，ubuntu的nfs配置请见附录
-
-在master节点上安装NFS工具
-yum install -y nfs-utils
-
-创建共享目录
-mkdir /data
-
-设置共享权限
-chown nobody.nobody -R /data
-
-echo "/data *(rw,no_root_squash)" >> /etc/exports
-
-重启服务（如果节点重启之后，共享丢失，请重做此步）
-systemctl restart nfs-server
-
-设置开机自启
-systemctl enable nfs-server
-
-showmount -e 192.168.0.123 （需要替换NFS服务器ip地址）
-  *如果共享成功可以看到data目录
-
-创建之后所需的mysql目录
-mkdir /data/mysql
-
-在其他机器上执行安装NFS工具和检查挂接
-yum install -y nfs-utils
-
-showmount -e 192.168.0.123
-
-在其他节点上进行测试
-mount -t nfs 192.168.0.123:data /mnt
-
-查看挂接点，通常在最后一行
-df -hT
-
-摘除
-umount /mnt
-
-安装NFS CSI，进入csi文件夹
-kubectl apply -f ./
-
-查看csi对应pod
-kubectl get pod -n kube-system -o wide | grep csi
-  *等待csi-nfs相关pod就绪之后再进行后续步骤
-
-创建StorageClass定义文件
-
-nano nfs-sc.yaml
----
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: nfs-csi
-provisioner: nfs.csi.k8s.io
-parameters:
-  server: 192.168.0.123 # 指定nfs服务器地址
-  share: /data
-reclaimPolicy: Retain  # only retain is supported
-volumeBindingMode: Immediate
-mountOptions:
-  - hard
-  - nfsvers=4.1
-
-创建SC 
-kubectl apply -f nfs-sc.yaml
-
-查看sc 
-kubectl get sc -o wide
 
 定义mysql pvc文件
 nano mysql.pvc.yaml 
@@ -431,7 +360,7 @@ kubectl apply -f wordpress.deploy2.yaml
 
 ver 4.0 为前端配置ingress
 
-使用以下范例创建ingress配置（需要加载ver 2.0 的ingress设置）
+使用以下范例创建ingress配置
 nano wordpress.ingress.yaml
 
 apiVersion: networking.k8s.io/v1
@@ -439,6 +368,8 @@ kind: Ingress
 metadata:
   name: wordpress-ingress
   namespace: blog
+  annotations:
+    kubernetes.io/ingress.class: nginx
 spec:
   rules:
   - host: wordpress.example.com
@@ -448,9 +379,10 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: wordpress-svc 
+            name: wordpress-nodeport
             port:
               number: 80
+
 
 启用ingress
 kubectl apply -f wordpress.ingress.yaml 
@@ -476,26 +408,7 @@ curl http://wordpress.example.com
 
 
 ver 5.0 为前段配置横向扩缩容
-使用附录中的范例创建metrics-server的文件
 
-安装metrics-server
-kubectl apply -f metrics-server.yaml
-
-查看pod
-kubectl get pod -n kube-system
-
-kubectl get pod -n kube-system | grep metrics-server
-
-修改kube-controller-manager.yaml，增加启动参数
-nano /etc/kubernetes/manifests/kube-controller-manager.yaml 
-
-    - --horizontal-pod-autoscaler-use-rest-clients=true
-    - --horizontal-pod-autoscaler-downscale-delay=5m0s
-    - --horizontal-pod-autoscaler-upscale-delay=20s
-    - --horizontal-pod-autoscaler-sync-period=10s
-
-修改好之后，观察kube-controller-manager的自动重启
-kubectl get pod -n kube-system | grep kube-controller-manager
 
 更新wordpress配置资源使用上下限
 nano wordpress.deploy3.yaml
@@ -586,47 +499,3 @@ kubectl describe deployment wordpress-deploy -n blog
 
 # 也可以使用命令行方式创建hpa策略
 # kubectl autoscale deployment wordpress-deploy -n blog --cpu-percent=50 --min=3 --max=10
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
