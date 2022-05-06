@@ -263,7 +263,7 @@ kubectl describe configmap mysql-cnf -n blog
 kubectl get configmap mysql-cnf -n blog -o yaml
 
 创建secret
-kubectl create secret generic mysql-pass --from-literal=password=password -n blog
+kubectl create secret generic mysql-pass --from-literal=password=wordpress -n blog
 
 查看secret
 kubectl get secret -n blog
