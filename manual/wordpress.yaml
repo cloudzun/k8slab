@@ -300,6 +300,9 @@ spec:
       - name: mysql-config # 定义configmap 卷
         configMap:
           name: mysql-cnf
+      - name: mysqldata
+        persistentVolumeClaim: # 使用PVC
+          claimName: mysqldata
       containers:
       - name: mysql
         image: mysql:5.7
@@ -307,6 +310,8 @@ spec:
         volumeMounts:
         - name: mysql-config # 挂接configmap卷
           mountPath: /etc/mysql/mysql.conf.d
+        - name: mysqldata
+          mountPath: /var/lib/mysql
         ports:
         - containerPort: 3306
           name: dbport
