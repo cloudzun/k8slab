@@ -37,7 +37,7 @@ git checkout v1.23
 *启用ingress
 
 使用 ver 3.0创建yaml
-kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/main/svc/ingress-nginx.yaml
+kubectl apply -f https://raw.githubusercontent.com/cloudzun/k8slab/v1.23/svc/ingress-nginx.yaml
 
 cd svc
 
