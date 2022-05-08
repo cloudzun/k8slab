@@ -111,7 +111,7 @@ metadata:
   labels:
     app: wordpress
 spec:
-  replicas: 5
+  replicas: 1
   selector:
     matchLabels:
       app: wordpress
@@ -180,17 +180,3 @@ spec:
             name: wordpress-svc
             port:
               number: 80
---- 
-apiVersion: autoscaling/v1
-kind: HorizontalPodAutoscaler
-metadata:
-  name: wordpress-deploy
-  namespace: blog
-spec:
-  maxReplicas: 10
-  minReplicas: 3
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: wordpress-deploy
-  targetCPUUtilizationPercentage: 50
