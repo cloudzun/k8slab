@@ -1,0 +1,436 @@
+安装docker
+
+apt -y install apt-transport-https ca-certificates curl software-properties-common
+
+curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://mirrors.aliyun.com/docker-ce/linux/ubuntu $(lsb_release -cs) stable"
+
+apt update -y 
+apt install docker-ce -y 
+
+# curl -sSL https://get.docker.com/ | sh
+# usermod -aG docker chengzh
+
+mkdir /etc/docker
+
+cat > /etc/docker/daemon.json << EOF
+{
+    "exec-opts": ["native.cgroupdriver=systemd"],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "100m",
+        "max-file": "10"
+    },
+    "registry-mirrors": ["https://pqbap4ya.mirror.aliyuncs.com"]
+}
+EOF
+
+systemctl restart docker
+systemctl enable docker
+
+基本映像操作
+
+docker run -d -p 2048:80 alexwhen/docker-2048
+
+
+在宿主机上检查容器运行情况
+docker ps
+
+查看映像
+docker images
+ 
+查看容器资源使用情况
+docker stats
+ 
+看看2048容器内部的进程使用情况
+docker top container ID
+ 
+如果有必要我们可以重启容器
+docker restart container ID
+
+还可以停止容器
+docker stop container ID
+
+关闭之后再查看一下容器列表
+docker ps
+
+不截图了，其实你什么都看不到，因为docker ps只能看到活着的容器，如果不论死活都要看到则需要使用：
+docker ps -a -q
+
+如果需要启动之前被停止的容器
+docker start container ID
+
+运行更多容器
+docker run -d -p 80:80 httpd
+docker run -d -p 8000:80 tutum/wordpress
+docker run -d -p 8080:80 dorowu/ubuntu-desktop-lxde-vnc
+
+
+好了我们盘点这些大宝贝
+docker ps
+
+docker images
+
+看看谁耗资源最多
+docker stats
+
+清空容器，无论死活
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+
+先运行一个现成的容器
+docker run -d --name myhttpd -p 80:80 httpd
+
+
+查看容器列表
+docker ps
+ 
+查看映像列表
+docker images
+
+看看这个映像文件的分层结构
+docker image history httpd
+
+针对httpd映像执行交互式操作
+docker exec -it myhttpd bash
+
+
+为了修改这个html文件，我们得安装文本编辑器，比如nano
+apt-get update && apt-get install -y nano
+
+好了准备进行编辑
+nano index.html
+
+赶紧把咱的劳动成果也固化成映像，供之后复用
+docker commit myhttpd httpdnew
+
+查看映像列表
+docker images
+
+查看新映像的图层历史
+docker image history httpdnew
+
+
+看看新映像具体的效果
+docker run -d -p 81:80 httpdnew
+
+
+开始下一程之前，我们和过去小别
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+创建httpd实验文件夹
+mkdir httpd
+
+进入到实验文件夹
+cd httpd
+ 
+创建index文件
+nano index.html
+
+创建index文件
+nano index.html
+  
+<html><body><h1>Build Ship and Run!</h1></body></html>
+ 
+创建Dockerfile文件
+nano Dockerfile 
+
+ 
+# Simple Dockerfile for httpd
+FROM httpd
+MAINTAINER Abraham Cheng 
+# Bundle app source
+COPY . /usr/local/apache2/htdocs
+ 
+构建映像
+docker build -t myhttpd .
+
+运行容器查看效果
+docker run -d -p 80:80 myhttpd
+
+查看新映像图层历史
+docker history myhttpd 
+
+大杀器
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+登陆到docker hub并推送映像
+docker login
+
+  
+给新映像打tag
+docker tag myhttpd chengzh/httpd
+
+推送映像到docker hub
+docker push chengzh/httpd
+
+安装映像库
+docker run -d -p 5000:5000 -v /usr/local/registry:/var/lib/registry --restart=always --name registry registry:2
+
+打标签
+docker tag chengzh/httpd localhost:5000/httpd:v1.0
+
+再次查看映像并找茬
+docker images
+
+将映像上传到本地映像库
+docker push localhost:5000/httpd:v1.0
+
+查看映像catalog
+curl http://localhost:5000/v2/_catalog
+
+
+docker run -d -p 80:80 localhost:5000/httpd:v1.0
+
+docker ps
+
+curl http://localhost
+
+大杀器
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+
+
+创建index.html文件
+mkdir http
+
+cd http
+
+nano index.html
+
+<html><body><h1>Go West!</h1></body></html>
+
+创建使用bind mount数据卷的容器
+docker run -d -p 80:80 -v ~/http:/usr/local/apache2/htdocs httpd
+
+尝试在宿主机修改index.html文件，并查看容器变化情况
+
+创建使用managed volume的容器，注意它的端口是81
+docker run -d -p 81:80 -v /usr/local/apache2/htdocs httpd
+
+查看容器页面
+curl localhost:81
+
+查看容器详细配置
+docker inspect container id
+
+修改index.html，并查看结果
+sudo nano source dir/index.html
+
+清理现场
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+
+
+在宿主机上列出所有的网络类型
+docker network ls
+
+ 
+
+检查bridge网络
+docker inspect bridge
+
+ 
+在宿主机上观察bridge 网络，注意观察veth
+brctl show
+
+ 
+  注意：可能需要执行安装brctl sudo apt install bridge-utils
+查看宿主机网络配置，重点关注对应veth 配置细节
+ip add
+
+ 
+创建测试容器
+docker run -d --name httpd1 httpd
+
+在宿主机上观察brctl的变化
+brctl show
+
+ 
+
+查看新增加的veth的细节
+ip add
+ 
+在httpd1容器里观察eth0设置
+docker exec -it httpd1 bash
+
+apt-get update && apt-get install -y iproute2
+
+ip a
+
+exit 
+
+
+在宿主机上观察bridge 网络，注意观察veth
+docker inspect network bridge
+ 
+
+创建第二个httpd容器
+docker run -d --name httpd2 httpd
+
+在宿主机上观察新创建的veth
+brctl show
+ 
+
+宿主机上查看 veth 连接信息
+ip link
+ 
+在容器内部查看veth pair 信息
+docker exec -it httpd2 bash
+
+cat /sys/class/net/eth0/iflink
+ 
+
+创建自定义网络
+docker network create --driver bridge --subnet 172.22.16.0/24 --gateway 172.22.16.1 mynetwork
+
+检查mynetwork配置
+docker network inspect mynetwork
+ 
+
+创建容器使用新建的自定义网络
+docker run -d -p 83:80 --network=mynetwork --name httpd3 httpd
+
+检查httpd3容器ip地址
+docker exec -it httpd3 bash
+
+apt-get update && apt-get install -y iproute2
+
+ip add
+
+exit
+ 
+在宿主机上为前述httpd1容器创建第二块网卡使其连接到mynetwork
+docker network connect mynetwork httpd1
+
+检查双网卡容器httpd1的网络设置，重点观察mynetwork的相关配置
+docker container inspect httpd1
+ 
+
+在 httpd3 中ping httpd1
+docker exec -it httpd3 bash
+
+apt-get update && apt-get install -y iputils-ping
+
+ping 172.22.16.3
+ 
+apt-get update && apt-get install -y traceroute
+
+traceroute 172.22.16.3
+
+exit
+ 
+清理环境
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+docker network rm mynetwork
+
+再观察一下宿主机网络设置
+brctl show
+
+docker inspect bridge
+
+合理分配，循环释放测试
+docker run -it -m 300M progrium/stress --vm 1 --vm-bytes 280M
+ 
+  需要使用ctrl c终止容器
+
+反面例子
+docker run -it -m 300M progrium/stress --vm 1 --vm-bytes 310M
+ 
+很快内存耗尽，容器被强行终止
+清理现场
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+CPU分配限制
+
+创建两个不同优先级的容器，根据宿主机cpu数量设置参数
+docker run --name containerA -d  -c 1024 progrium/stress --cpu 1
+docker run --name containerB -d  -c 512 progrium/stress --cpu 1
+ 
+检查两个容器的cpu使用情况
+docker stats
+ 
+
+关闭容器A，再检查cpu使用情况
+docker stop containerA
+
+
+docker stats
+ 
+查看容器B内部的进程
+ 
+清理现场
+docker stop $(docker ps -a -q);docker rm $(docker ps -a -q)
+
+ 
+
+安装dockers-compose
+apt install docker-compose
+
+创建docker-compose文件
+nano docker-compose.yml
+
+version: '3.3'
+services:
+   db:
+     image: mysql:5.7
+     volumes:
+       - db_data:/var/lib/mysql
+     restart: always
+     environment:
+       MYSQL_ROOT_PASSWORD: somewordpress
+       MYSQL_DATABASE: wordpress
+       MYSQL_USER: wordpress
+       MYSQL_PASSWORD: wordpress
+
+   wordpress:
+     depends_on:
+       - db
+     image: wordpress:latest
+     ports:
+       - "8000:80"
+     restart: always
+     environment:
+       WORDPRESS_DB_HOST: db:3306
+       WORDPRESS_DB_USER: wordpress
+       WORDPRESS_DB_PASSWORD: wordpress
+volumes:
+    db_data:
+
+运行docker-compose
+docker-compose up -d
+
+查看容器和映像
+docker ps
+
+docker images
+
+查看docke volume
+docker volume ls
+
+查看db容器，重点关注mount字段
+docker inspect root_db_1
+
+停止容器
+docker-compose down
+
+#如果要彻底清理这个stack，则使用下列带有--volumes的命令行
+#docker-compose down --volumes
+
+
+运行docker-compose
+docker-compose up -d
+
+安装portainer
+docker run -d -p 9000:9000 --restart always -v /var/run/docker.sock:/var/run/docker.sock -v /opt/portainer:/data portainer/portainer -H unix:///var/run/docker.sock
+
+安装Weave scope 
+sudo curl -L git.io/scope -o /usr/local/bin/scope
+sudo chmod a+x /usr/local/bin/scope
+sudo scope launch
+
+安装Prometheus
+git clone https://github.com/stefanprodan/dockprom  
+cd dockprom 
+ADMIN_USER=admin ADMIN_PASSWORD=admin docker-compose up -d
+
