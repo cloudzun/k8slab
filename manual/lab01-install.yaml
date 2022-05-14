@@ -397,6 +397,55 @@ curl 10.244.191.1
 
 备注：
 
+节点无法加入到群集：dial tcp 127.0.0.1:10248: connect: connection refused，问题修正步骤
+
+修改docker配置
+echo '{"exec-opts": ["native.cgroupdriver=systemd"]}' | sudo tee /etc/docker/daemon.json
+
+重启docker daemon
+systemctl daemon-reload
+systemctl restart docker
+systemctl restart kubelet
+
+清理此前的安装痕迹
+kubadm reset
+
+重新加入群集
+kubeadm join …………
+
+
+节点加入群集之后始终无法ready，使用以下步骤逐出群集
+kubectl drain k8s-0005 --delete-local-data --force --ignore-daemonsets
+kubectl delete node  k8s-0005
+
+
+忘记join key
+kubeadm token create  --print-join-command
+
+
+缺少依赖，缺少啥咱就安啥
+The following packages have unmet dependencies:
+ kubelet : Depends: ebtables but it is not going to be installed
+E: Unable to correct problems, you have held broken packages.
+
+sudo apt-get install ebtables
+
+版本不兼容
+kubelet : Depends: iptables (>= 1.4.21)
+E: Unable to correct problems, you have held broken packages.
+
+核心包版本不兼容
+apt-get upgrade iptables
+iptables : Depends: libip4tc0 (= 1.6.1-2ubuntu2) but it is not going to be installed
+           Depends: libip6tc0 (= 1.6.1-2ubuntu2) but it is not going to be installed
+           Depends: libiptc0 (= 1.6.1-2ubuntu2) but it is not going to be installed
+           Depends: libxtables12 (= 1.6.1-2ubuntu2) but 1.8.4-3ubuntu2 is to be installed
+# 这里报错更高版本的包已经装过了，坑点，不要卸载这个更高版本的包(笔者的一时手欠加忘拍快照直接报废了一个系统），直接安装需要的版本的包即可，不然系统直接挂了
+apt-get install libxtables12=1.6.1-2ubuntu2
+
+apt-get upgrade iptables
+
+
 配置国内镜像源
 
 sudo mkdir -p /etc/docker
