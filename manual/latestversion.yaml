@@ -144,6 +144,7 @@ kubectl get svc
 
 *推倒重装
 kubeadm reset 
+rm -rf $HOME/.kube/config
 
 *删除master污点，使其能承载工作负载
 kubectl taint node node1 node-role.kubernetes.io/master-
