@@ -1,0 +1,45 @@
+使用lens连接云主机
+
+cd /etc/kubernetes/pki
+
+# 生成密钥对
+openssl genrsa -out apiserver.key 2048	
+
+# 生成
+openssl req -new -key apiserver.key -subj "/CN=kube-apiserver," -out apiserver.csr
+
+# 新增 apiserver.ext文件，包含所有的地址列表，ip:xxxx即为要包含的新节点的ip， 内容如下：
+nano apiserver.ext
+
+subjectAltName = DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc, DNS:kubernetes.default.svc.cluster.local, IP:10.96.0.1, IP:10.24.138.208, IP:xxxx
+
+# 使用ca根证书生成新crt
+openssl x509 -req -in apiserver.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out apiserver.crt -days 3650 -extfile apiserver.ext
+
+
+安装cockpit
+. /etc/os-release
+sudo apt install -t ${VERSION_CODENAME}-backports cockpit
+
+更新网络配置文件
+nano /etc/netplan/00-installer-config.yaml
+
+network:
+    ethernets:
+      eth0:
+        addresses:
+          - 192.168.1.201/24
+        routes:
+          - to: default
+            via: 192.168.1.1
+        nameservers:
+          addresses: [192.168.1.1]
+        dhcp4: no
+    version: 2
+    renderer: NetworkManager # 增加这一段
+
+使配置生效
+netplan apply
+
+修改欢迎文件
+nano /etc/motd
