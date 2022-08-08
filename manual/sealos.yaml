@@ -72,7 +72,9 @@ spec:
 创建群集
 sealos apply -f Clusterfile
 
-
+删除所有master污点，使其能承载工作负载
+kubectl taint nodes --all node-role.kubernetes.io/master-
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
 
 
 
