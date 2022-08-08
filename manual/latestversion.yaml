@@ -24,7 +24,9 @@ apt update -y
 
 apt-cache madison kubelet # 查看目前发布的版本
 
-apt install -y kubelet kubeadm kubectl # 安装最新版本的kube三兄弟
+apt install -y kubelet=1.23.0-00 kubeadm=1.23.0-00  kubectl=1.23.0-00
+
+# apt install -y kubelet kubeadm kubectl # 安装最新版本的kube三兄弟
 
 
 安装master(只在master上操作)
