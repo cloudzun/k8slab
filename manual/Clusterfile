@@ -17,7 +17,7 @@ spec:
     - node
     - amd64
   image:
-  - labring/kubernetes:v1.22.8
+  - labring/kubernetes:v1.23.8
   - labring/calico:v3.22.1
   - labring/openebs:v1.9.0
   - labring/helm:v3.8.2
