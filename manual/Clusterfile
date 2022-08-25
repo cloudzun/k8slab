@@ -1,0 +1,63 @@
+apiVersion: apps.sealos.io/v1beta1
+kind: Cluster
+metadata:
+  creationTimestamp: null
+  name: default
+spec:
+  hosts:
+  - ips:
+    - 192.168.1.231:22
+    roles:
+    - master
+    - amd64
+  - ips:
+    - 192.168.1.232:22
+    - 192.168.1.233:22
+    roles:
+    - node
+    - amd64
+  image:
+  - labring/kubernetes:v1.22.8
+  - labring/calico:v3.22.1
+  - labring/openebs:v1.9.0
+  - labring/helm:v3.8.2
+  - labring/ingress-nginx:4.1.0
+  - labring/cert-manager:v1.8.0
+  - labring/metrics-server:v0.6.1
+  - labring/kube-prometheus-stack:v0.56.0
+  ssh:
+    passwd: 2wsx#EDC
+    pk: /root/.ssh/id_rsa
+    port: 22
+    user: root
+status: {}
+---
+apiVersion: kubeadm.k8s.io/v1beta2
+kind: ClusterConfiguration
+networking:
+  podSubnet: 10.244.0.0/16
+---
+apiVersion: apps.sealos.io/v1beta1
+kind: Config
+metadata:
+  name: calico
+spec:
+  path: manifests/calico.yaml
+  data: |
+    apiVersion: operator.tigera.io/v1
+    kind: Installation
+    metadata:
+      name: default
+    spec:
+      # Configures Calico networking.
+      calicoNetwork:
+        # Note: The ipPools section cannot be modified post-install.
+        ipPools:
+        - blockSize: 26
+          # Note: Must be the same as podCIDR
+          cidr: 10.244.0.0/16
+          encapsulation: IPIP
+          natOutgoing: Enabled
+          nodeSelector: all()
+        nodeAddressAutodetectionV4:
+          interface: "eth.*|en.*"
