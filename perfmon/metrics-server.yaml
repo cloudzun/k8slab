@@ -36,14 +36,11 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - nodes/metrics
-  verbs:
-  - get
-- apiGroups:
-  - ""
-  resources:
   - pods
   - nodes
+  - nodes/stats
+  - namespaces
+  - configmaps
   verbs:
   - get
   - list
@@ -134,10 +131,10 @@ spec:
       - args:
         - --cert-dir=/tmp
         - --secure-port=4443
-        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-preferred-address-types=InternalIP   # 删掉 ExternalIP,Hostname这两个，这里已经改好了，你那边要自己核对一下
         - --kubelet-use-node-status-port
-        - --metric-resolution=40s
-        image: k8s.gcr.io/metrics-server/metrics-server:v0.6.2
+        - --kubelet-insecure-tls                    #   加上该启动参数
+        image: k8s.gcr.io/metrics-server/metrics-server:v0.4.1                 # 镜像地址根据情况修改
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -157,14 +154,8 @@ spec:
             path: /readyz
             port: https
             scheme: HTTPS
-          initialDelaySeconds: 20
           periodSeconds: 10
-        resources:
-          requests:
-            cpu: 100m
-            memory: 200Mi
         securityContext:
-          allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           runAsNonRoot: true
           runAsUser: 1000
