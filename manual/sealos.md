@@ -15,6 +15,7 @@ sealos gen labring/kubernetes:v1.24.0 labring/calico:v3.22.1 --masters 192.168.1
 编辑Clusterfile
 nano Clusterfile
 
+```yaml
 apiVersion: apps.sealos.io/v1beta1
 kind: Cluster
 metadata:
@@ -72,6 +73,7 @@ spec:
           nodeSelector: all()
         nodeAddressAutodetectionV4:
           interface: "eth.*|en.*"
+```
 
 #下载Clusterfile
 wget https://raw.githubusercontent.com/cloudzun/k8slab/v1.23/manual/Clusterfile
