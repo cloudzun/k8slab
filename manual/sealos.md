@@ -8,7 +8,9 @@ mv sealos /usr/bin
 ```
 
 生成Clusterfile文件，一个单master两node的kubernetes集群
+```bash
 sealos gen labring/kubernetes:v1.24.0 labring/calico:v3.22.1 --masters 192.168.1.231 --nodes 192.168.1.232,192.168.1.233 --passwd 2wsx#EDC > Clusterfile
+```
 
 编辑Clusterfile
 nano Clusterfile
