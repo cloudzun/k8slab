@@ -13,7 +13,9 @@ sealos gen labring/kubernetes:v1.24.0 labring/calico:v3.22.1 --masters 192.168.1
 ```
 
 编辑Clusterfile
+```bash
 nano Clusterfile
+```
 
 ```yaml
 apiVersion: apps.sealos.io/v1beta1
@@ -75,15 +77,21 @@ spec:
           interface: "eth.*|en.*"
 ```
 
-#下载Clusterfile
+下载Clusterfile
+```bash
 wget https://raw.githubusercontent.com/cloudzun/k8slab/v1.23/manual/Clusterfile
+```
 
 创建群集
+```bash
 sealos apply -f Clusterfile
+```
 
 删除所有master污点，使其能承载工作负载
+```bash
 kubectl taint nodes --all node-role.kubernetes.io/master-
 kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+```
 
 
 
