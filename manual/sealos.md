@@ -77,7 +77,7 @@ spec:
           interface: "eth.*|en.*"
 ```
 
-下载Clusterfile
+或者下载Clusterfile
 ```bash
 wget https://raw.githubusercontent.com/cloudzun/k8slab/v1.23/manual/Clusterfile
 ```
