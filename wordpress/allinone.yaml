@@ -39,7 +39,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: nfs-csi # 指定使用存储类
+  # storageClassName: nfs-csi # 指定使用存储类
   resources:
     requests:
       storage: 5Gi
