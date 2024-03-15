@@ -18,6 +18,6 @@ spec:
         name: docker-http-server
         resources: {}
       tolerations: # 增加针对master的容忍
-      - key: node-role.kubernetes.io/master
+      - key: node-role.kubernetes.io/control-plane
         operator: Exists
         effect: NoSchedule
