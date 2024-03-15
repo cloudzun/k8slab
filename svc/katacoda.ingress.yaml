@@ -2,17 +2,16 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: katacoda-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
-  - host: hello.example.com # 主机名
+  - host: hello.example.com
     http:
       paths:
-      - path: / # 路径
+      - path: /
         pathType: Prefix
-        backend: # 后端服务
+        backend:
           service:
-            name: katacoda 
+            name: katacoda
             port:
               number: 80
